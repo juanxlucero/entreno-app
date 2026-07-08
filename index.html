@@ -573,6 +573,10 @@ document.getElementById('fecha').value = todayStr();
 document.getElementById('fecha').addEventListener('change', () => switchDia(currentDia));
 initDayButtons();
 switchDia(1);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
 </script>
 </body>
 </html>
