@@ -134,7 +134,7 @@
 
   <div style="text-align:center; margin-top:18px; display:flex; gap:14px; justify-content:center;">
     <button class="linkbtn" onclick="openConfig()">Editar lista de ejercicios</button>
-    <button class="linkbtn" onclick="openImportPrev()">Importar semana anterior</button>
+    <button class="linkbtn" onclick="openImportPrev()">Importar datos (solo primera vez)</button>
   </div>
 </main>
 
@@ -182,8 +182,8 @@
 
 <div class="overlay hidden" id="prevOverlay">
   <div class="sheet">
-    <h2>Importar semana anterior</h2>
-    <div class="msg" style="margin-bottom:10px">Pegá acá el texto que te da el botón "Exportar snapshot para el celu" de <b>desktop.html</b>. Así vas a ver, al lado de cada ejercicio, cómo te fue la última vez.</div>
+    <h2>Importar datos</h2>
+    <div class="msg" style="margin-bottom:10px">Normalmente no hace falta: la app ya muestra "antes" con lo último que vos mismo cargaste acá. Usá esto solo si es la primera vez que usás la app (o cambiaste de celular) y querés arrancar con los datos de la planilla. Pegá el texto que te da el botón "Exportar snapshot para el celu" de <b>desktop.html</b>.</div>
     <textarea class="tpl" id="prevInput" style="min-height:140px" placeholder='{"PRESS plano": {"reps":"7","peso":"70","notas":""}, ...}'></textarea>
     <button class="savebtn" onclick="savePrevImport()">Guardar</button>
     <button class="linkbtn" style="margin-top:10px" onclick="closePrevImport()">Cerrar</button>
@@ -234,6 +234,23 @@ function loadPrev() {
   return {};
 }
 let PREV = loadPrev();
+
+function findLocalPrev(nombre) {
+  let best = null;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || key.indexOf('entreno_draft_') !== 0) continue;
+    let d;
+    try { d = JSON.parse(localStorage.getItem(key)); } catch(e) { continue; }
+    if (!d || !d.fecha || d.fecha === draft.fecha) continue;
+    const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
+    if (!entry || (!entry.reps && !entry.peso)) continue;
+    if (!best || d.fecha > best.fecha) {
+      best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '' };
+    }
+  }
+  return best;
+}
 
 function openImportPrev() {
   document.getElementById('prevInput').value = '';
@@ -333,7 +350,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   card.className = 'card' + (data ? ' done' : '');
   card.id = 'card_' + (esMovilidad?'m_':'e_') + idx;
 
-  const prev = PREV[nombre];
+  const prev = findLocalPrev(nombre) || PREV[nombre];
 
   const head = document.createElement('div');
   head.className = 'card-head';
