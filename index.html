@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Entreno</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --card-done: #16281f;
+    --text: #eef0f3;
+    --muted: #9aa1ab;
+    --accent: #4f8cff;
+    --danger: #ff5d5d;
+    --ok: #35c46b;
+    --border: #2a2e37;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 100px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg);
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 120px; }
+  input[type=date] {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-size: 15px; width: 100%;
+  }
+  .daybtns { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 8px; }
+  .daybtn {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px 4px; text-align: center; font-size: 13px; cursor: pointer;
+  }
+  .daybtn small { display:block; color: var(--muted); font-size: 10px; margin-top:2px; }
+  .daybtn.active { border-color: var(--accent); background: #16233d; }
+  main { padding: 12px 16px; }
+  .toggle-row { display:flex; align-items:center; justify-content: space-between; background: var(--card); border:1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+  .switch { position: relative; width: 44px; height: 26px; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; inset:0; background:#3a3f4a; border-radius: 999px; transition:.15s; cursor:pointer; }
+  .slider:before { content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; background:white; border-radius:50%; transition:.15s; }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider:before { transform: translateX(18px); }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing:.05em; color: var(--muted); margin: 18px 0 8px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  .card.done { background: var(--card-done); border-color: #234a34; }
+  .card-head { display:flex; justify-content: space-between; align-items:center; cursor: pointer; gap: 8px; }
+  .card-head-left { min-width: 0; }
+  .card-head-left > div:first-child { display:flex; align-items:center; }
+  .card-name { font-size: 15px; font-weight: 600; }
+  .prev-hint { font-size: 11.5px; color: var(--muted); margin-top: 3px; margin-left: 34px; }
+  .card-summary { font-size: 13px; color: var(--ok); font-weight: 600; white-space: nowrap; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; border-radius:999px; background:var(--accent); color:white; font-size:12px; font-weight:700; margin-right:8px; }
+  .card-body { margin-top: 12px; display: none; }
+  .card.open .card-body { display: block; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  input[type=text], input[type=number], textarea, select {
+    background: #101217; border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-size: 15px; width: 100%; font-family: inherit;
+  }
+  label.small { font-size: 12px; color: var(--muted); display:block; margin-bottom:4px; }
+  .chiprow { display:flex; gap:8px; margin-bottom:8px; flex-wrap: wrap; }
+  .chip {
+    padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); background: #101217;
+    font-size: 13px; cursor: pointer; color: var(--muted);
+  }
+  .chip.on { border-color: var(--danger); color: var(--danger); background: #2a1418; }
+  .chip.ss-on { border-color: var(--accent); color: var(--accent); background: #142238; }
+  .savebtn { width:100%; padding: 12px; border-radius: 10px; border:none; background: var(--accent); color:white; font-size:15px; font-weight:600; cursor:pointer; margin-top:4px; }
+  .footer {
+    position: fixed; bottom:0; left:0; right:0; background: var(--bg); border-top: 1px solid var(--border);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    display:flex; gap:8px;
+  }
+  .btn { flex:1; padding: 14px; border-radius: 12px; border:none; font-size:15px; font-weight:700; cursor:pointer; }
+  .btn-primary { background: var(--ok); color:#04140a; }
+  .btn-secondary { background: var(--card); color: var(--text); border:1px solid var(--border); }
+  .linkbtn { background:none; border:none; color: var(--accent); font-size:13px; text-decoration:underline; cursor:pointer; padding:0; }
+  .hidden { display:none !important; }
+  .overlay { position:fixed; inset:0; background: rgba(0,0,0,.6); z-index:50; display:flex; align-items:flex-end; }
+  .sheet { background: var(--bg); width:100%; max-height:85vh; overflow:auto; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin-top:0; font-size:17px; }
+  textarea.tpl { min-height: 90px; font-family: monospace; font-size: 13px; }
+  pre#jsonOut { white-space: pre-wrap; word-break: break-all; background:#101217; border:1px solid var(--border); border-radius:10px; padding:10px; font-size:11px; max-height: 180px; overflow:auto; }
+  .msg { font-size: 12px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏋️ Registro de entreno</h1>
+  <div class="row">
+    <div class="field">
+      <label>Fecha</label>
+      <input type="date" id="fecha">
+    </div>
+  </div>
+  <div class="daybtns" id="daybtns"></div>
+</header>
+
+<main id="main">
+  <div class="toggle-row">
+    <span>Entrenaste en ayunas</span>
+    <label class="switch">
+      <input type="checkbox" id="ayuno">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="section-title" id="grupoTitle">Ejercicios</div>
+  <div id="cards"></div>
+
+  <div id="movSection">
+    <div class="section-title">Movilidad</div>
+    <div id="movCards"></div>
+  </div>
+
+  <div style="text-align:center; margin-top:18px; display:flex; gap:14px; justify-content:center;">
+    <button class="linkbtn" onclick="openConfig()">Editar lista de ejercicios</button>
+    <button class="linkbtn" onclick="openImportPrev()">Importar semana anterior</button>
+  </div>
+</main>
+
+<div class="footer">
+  <button class="btn btn-secondary" onclick="clearDay()">Borrar día</button>
+  <button class="btn btn-primary" onclick="finalizarDia()">Finalizar y guardar</button>
+</div>
+
+<div class="overlay hidden" id="configOverlay">
+  <div class="sheet">
+    <h2>Ejercicios por día (uno por línea, en orden ideal)</h2>
+    <label class="small">Día 1 — grupo</label>
+    <input type="text" id="grp1" style="margin-bottom:6px">
+    <textarea class="tpl" id="tpl1"></textarea>
+    <label class="small" style="margin-top:10px">Día 2 — grupo</label>
+    <input type="text" id="grp2" style="margin-bottom:6px">
+    <textarea class="tpl" id="tpl2"></textarea>
+    <label class="small" style="margin-top:10px">Día 3 — grupo</label>
+    <input type="text" id="grp3" style="margin-bottom:6px">
+    <textarea class="tpl" id="tpl3"></textarea>
+    <label class="small" style="margin-top:10px">Día 4 — grupo</label>
+    <input type="text" id="grp4" style="margin-bottom:6px">
+    <textarea class="tpl" id="tpl4"></textarea>
+    <label class="small" style="margin-top:10px">Movilidad día 1 (una por línea)</label>
+    <textarea class="tpl" id="mov1" style="min-height:50px"></textarea>
+    <label class="small" style="margin-top:10px">Movilidad día 3 (una por línea)</label>
+    <textarea class="tpl" id="mov3" style="min-height:50px"></textarea>
+    <button class="savebtn" onclick="saveConfig()">Guardar plantilla</button>
+    <button class="linkbtn" style="margin-top:10px" onclick="closeConfig()">Cerrar</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="exportOverlay">
+  <div class="sheet">
+    <h2>Día guardado</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn btn-primary" style="flex:1" onclick="shareJson()">Compartir a Drive</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="downloadJson()">Descargar</button>
+    </div>
+    <div class="msg">Compartí o mové este archivo a la carpeta <b>Entrenamiento/app/pending</b> en Drive. La app de escritorio lo va a levantar de ahí.</div>
+    <pre id="jsonOut"></pre>
+    <button class="linkbtn" style="margin-top:10px" onclick="closeExport()">Cerrar</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="prevOverlay">
+  <div class="sheet">
+    <h2>Importar semana anterior</h2>
+    <div class="msg" style="margin-bottom:10px">Pegá acá el texto que te da el botón "Exportar snapshot para el celu" de <b>desktop.html</b>. Así vas a ver, al lado de cada ejercicio, cómo te fue la última vez.</div>
+    <textarea class="tpl" id="prevInput" style="min-height:140px" placeholder='{"PRESS plano": {"reps":"7","peso":"70","notas":""}, ...}'></textarea>
+    <button class="savebtn" onclick="savePrevImport()">Guardar</button>
+    <button class="linkbtn" style="margin-top:10px" onclick="closePrevImport()">Cerrar</button>
+  </div>
+</div>
+
+<script>
+const DEFAULT_TEMPLATE = {
+  grupos: {
+    1: "EMPUJES",
+    2: "PIERNA TRASERA",
+    3: "TIRE",
+    4: "PIERNA DELANTERA"
+  },
+  dias: {
+    1: ["PRESS plano","PRESS inclinado barra","PRESS MILITAR mancuernas","TRICEPS EN POLEA bilateral","VUELOS LATERALES polea","APERTURAS en maquina","EXTENSIÓN TRÍCEPS overhead polea (cuerda)"],
+    2: ["HIP THRUST máquina nqn","PESO MUERTO libre","CURL DE ISQUIO maquina acostado","ADUCTORA","ABDUCCIÓN en maquina","PRESS PALOFF en polea","CRUNCHES polea"],
+    3: ["REMO BARRA libre","PULL UP","PULLOVER polea","REMO MANCUERNA unilateral","PÁJAROS máquina apertura","PREDICADOR barra Z","CURL polea baja","CURL CLÁSICO mancuernas"],
+    4: ["SENTADILLA libre","ELEVACIONES GEMELOS libre","SENTADILLA BÚLGARA hammer","EXTENSIÓN CUAD en maq","GEMELOS máquina","OBLICUOS colgado","ELEVACIONES PIERNAS"]
+  },
+  movilidad: {
+    1: ["GOOD MORNING","JEFFERSON CURL"],
+    3: ["FLEXIÓN CADERA","EXTENSIONES"]
+  }
+};
+
+let TEMPLATE = loadTemplate();
+let currentDia = 1;
+let draft = null; // { fecha, dia, ayuno, ejercicios:{nombre:{...}}, movilidad:{nombre:{...}}, ordenLog:[nombres en orden] }
+let lastExportJson = null;
+
+function loadTemplate() {
+  try {
+    const raw = localStorage.getItem('entreno_template_v1');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return JSON.parse(JSON.stringify(DEFAULT_TEMPLATE));
+}
+function saveTemplate() {
+  localStorage.setItem('entreno_template_v1', JSON.stringify(TEMPLATE));
+}
+
+function loadPrev() {
+  try {
+    const raw = localStorage.getItem('entreno_prev_v1');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {};
+}
+let PREV = loadPrev();
+
+function openImportPrev() {
+  document.getElementById('prevInput').value = '';
+  document.getElementById('prevOverlay').classList.remove('hidden');
+}
+function closePrevImport() { document.getElementById('prevOverlay').classList.add('hidden'); }
+function savePrevImport() {
+  const raw = document.getElementById('prevInput').value.trim();
+  if (!raw) { closePrevImport(); return; }
+  try {
+    const parsed = JSON.parse(raw);
+    localStorage.setItem('entreno_prev_v1', JSON.stringify(parsed));
+    PREV = parsed;
+    closePrevImport();
+    render();
+  } catch(e) {
+    alert('Ese texto no es un JSON válido. Copiá exactamente lo que te da "Exportar snapshot" en desktop.html.');
+  }
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function draftKey(fecha, dia) { return 'entreno_draft_' + fecha + '_' + dia; }
+
+function newDraft(fecha, dia) {
+  return { fecha, dia, ayuno: false, ejercicios: {}, movilidad: {} };
+}
+
+function loadDraft(fecha, dia) {
+  try {
+    const raw = localStorage.getItem(draftKey(fecha, dia));
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return newDraft(fecha, dia);
+}
+function persistDraft() {
+  localStorage.setItem(draftKey(draft.fecha, draft.dia), JSON.stringify(draft));
+}
+
+function initDayButtons() {
+  const el = document.getElementById('daybtns');
+  el.innerHTML = '';
+  for (let d=1; d<=4; d++) {
+    const b = document.createElement('div');
+    b.className = 'daybtn' + (d===currentDia ? ' active' : '');
+    b.innerHTML = 'Día ' + d + '<small>' + (TEMPLATE.grupos[d]||'') + '</small>';
+    b.onclick = () => { switchDia(d); };
+    el.appendChild(b);
+  }
+}
+
+function switchDia(d) {
+  currentDia = d;
+  const fecha = document.getElementById('fecha').value || todayStr();
+  draft = loadDraft(fecha, d);
+  initDayButtons();
+  render();
+}
+
+function render() {
+  document.getElementById('ayuno').checked = !!draft.ayuno;
+  document.getElementById('grupoTitle').textContent = (TEMPLATE.grupos[currentDia]||'Ejercicios');
+
+  const cardsEl = document.getElementById('cards');
+  cardsEl.innerHTML = '';
+  const list = TEMPLATE.dias[currentDia] || [];
+  list.forEach((nombre, idx) => {
+    cardsEl.appendChild(buildCard(nombre, idx, list, false));
+  });
+
+  const movList = TEMPLATE.movilidad[currentDia] || [];
+  const movSection = document.getElementById('movSection');
+  const movCardsEl = document.getElementById('movCards');
+  movCardsEl.innerHTML = '';
+  if (movList.length === 0) {
+    movSection.classList.add('hidden');
+  } else {
+    movSection.classList.remove('hidden');
+    movList.forEach((nombre, idx) => {
+      movCardsEl.appendChild(buildCard(nombre, idx, movList, true));
+    });
+  }
+}
+
+function ordenRealDe(nombre) {
+  const e = draft.ejercicios[nombre];
+  return e && e.ordenReal ? e.ordenReal : null;
+}
+
+function buildCard(nombre, idx, fullList, esMovilidad) {
+  const store = esMovilidad ? draft.movilidad : draft.ejercicios;
+  const data = store[nombre];
+  const card = document.createElement('div');
+  card.className = 'card' + (data ? ' done' : '');
+  card.id = 'card_' + (esMovilidad?'m_':'e_') + idx;
+
+  const prev = PREV[nombre];
+
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  const orden = esMovilidad ? '' : (ordenRealDe(nombre) ? '<span class="badge">'+ordenRealDe(nombre)+'</span>' : '<span class="badge" style="background:#3a3f4a">'+(idx+1)+'</span>');
+  const hint = (!data && prev) ? '<div class="prev-hint">antes: ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
+  head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + '</span></div>' + hint + '</div>' +
+    '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
+  head.onclick = () => { card.classList.toggle('open'); };
+  card.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
+  if (!esMovilidad) {
+    const ordenWrap = document.createElement('div');
+    ordenWrap.style.marginBottom = '8px';
+    ordenWrap.innerHTML = '<label class="small">Orden real (en qué posición lo hiciste)</label>' +
+      '<input type="number" inputmode="numeric" id="orden_'+card.id+'" value="'+(data && data.ordenReal ? data.ordenReal : idx+1)+'">';
+    body.appendChild(ordenWrap);
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'grid2';
+  grid.innerHTML =
+    '<div><label class="small">Reps</label><input type="number" inputmode="numeric" id="reps_'+card.id+'" value="'+(data?data.reps:'')+'"></div>' +
+    '<div><label class="small">Peso (kg)</label><input type="text" inputmode="decimal" id="peso_'+card.id+'" value="'+(data?data.peso:'')+'"></div>';
+  body.appendChild(grid);
+
+  if (!esMovilidad) {
+    const ssLabel = document.createElement('label');
+    ssLabel.className = 'small';
+    ssLabel.textContent = 'Superserie con:';
+    body.appendChild(ssLabel);
+    const sel = document.createElement('select');
+    sel.id = 'ss_' + card.id;
+    const linkedFrom = Object.keys(draft.ejercicios).find(n => draft.ejercicios[n].ss === nombre);
+    const preselected = (data && data.ss) || linkedFrom || '';
+    let opts = '<option value="">— ninguna —</option>';
+    fullList.forEach(n => { if (n !== nombre) opts += '<option value="'+n+'"'+(preselected===n?' selected':'')+'>'+n+'</option>'; });
+    sel.innerHTML = opts;
+    if (linkedFrom && !(data && data.ss)) {
+      const hint = document.createElement('div');
+      hint.className = 'small';
+      hint.style.marginTop = '4px';
+      hint.textContent = 'Vinculado automáticamente desde "' + linkedFrom + '"';
+      body.appendChild(sel);
+      body.appendChild(hint);
+    } else {
+      body.appendChild(sel);
+    }
+  }
+
+  const chiprow = document.createElement('div');
+  chiprow.className = 'chiprow';
+  chiprow.style.marginTop = '8px';
+  const fallo = document.createElement('div');
+  fallo.className = 'chip' + (data && data.fallo ? ' on' : '');
+  fallo.textContent = '⚠ Fallo';
+  fallo.onclick = () => fallo.classList.toggle('on');
+  fallo.id = 'fallo_' + card.id;
+  chiprow.appendChild(fallo);
+  body.appendChild(chiprow);
+
+  const notasLabel = document.createElement('label');
+  notasLabel.className = 'small';
+  notasLabel.textContent = 'Notas';
+  body.appendChild(notasLabel);
+  const notas = document.createElement('textarea');
+  notas.id = 'notas_' + card.id;
+  notas.rows = 2;
+  notas.value = data ? (data.notas||'') : '';
+  body.appendChild(notas);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'savebtn';
+  saveBtn.textContent = 'Guardar';
+  saveBtn.onclick = () => guardarSet(nombre, card.id, esMovilidad);
+  body.appendChild(saveBtn);
+
+  card.appendChild(body);
+  return card;
+}
+
+function guardarSet(nombre, cardId, esMovilidad) {
+  const reps = document.getElementById('reps_'+cardId).value.trim();
+  const peso = document.getElementById('peso_'+cardId).value.trim();
+  const fallo = document.getElementById('fallo_'+cardId).classList.contains('on');
+  const notas = document.getElementById('notas_'+cardId).value.trim();
+  const ssEl = document.getElementById('ss_'+cardId);
+  const ss = ssEl ? (ssEl.value || null) : null;
+
+  if (!reps && !peso) { alert('Poné al menos reps o peso'); return; }
+
+  if (esMovilidad) {
+    draft.movilidad[nombre] = { reps, peso, fallo, notas, ss };
+  } else {
+    const ordenEl = document.getElementById('orden_'+cardId);
+    const ordenReal = ordenEl ? (parseInt(ordenEl.value, 10) || null) : null;
+    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal };
+    syncSS();
+  }
+  persistDraft();
+  render();
+}
+
+function syncSS() {
+  const ej = draft.ejercicios;
+  Object.keys(ej).forEach(nombre => {
+    const partner = ej[nombre].ss;
+    if (partner && ej[partner] && !ej[partner].ss) {
+      ej[partner].ss = nombre;
+    }
+  });
+}
+
+function clearDay() {
+  if (!confirm('¿Borrar todo lo cargado de este día?')) return;
+  draft = newDraft(draft.fecha, draft.dia);
+  persistDraft();
+  render();
+}
+
+function idealPos(nombre, list) {
+  return list.indexOf(nombre) + 1;
+}
+
+function finalizarDia() {
+  const fecha = document.getElementById('fecha').value || todayStr();
+  const list = TEMPLATE.dias[currentDia] || [];
+  syncSS();
+  const ejercicios = Object.keys(draft.ejercicios).map(nombre => {
+    const e = draft.ejercicios[nombre];
+    return {
+      nombre,
+      posicionIdeal: idealPos(nombre, list),
+      ordenReal: ordenRealDe(nombre),
+      peso: e.peso,
+      reps: e.reps,
+      ss: e.ss || null,
+      fallo: !!e.fallo,
+      notas: e.notas || ''
+    };
+  });
+  if (ejercicios.length === 0) { alert('No cargaste ningún ejercicio todavía.'); return; }
+
+  const ordenes = ejercicios.map(e => e.ordenReal).filter(Boolean);
+  const repetidos = ordenes.filter((v,i) => ordenes.indexOf(v) !== i);
+  if (repetidos.length) {
+    if (!confirm('Hay orden real repetido (' + [...new Set(repetidos)].join(', ') + '). ¿Guardar igual?')) return;
+  }
+
+  const movilidad = Object.keys(draft.movilidad).map(nombre => {
+    const m = draft.movilidad[nombre];
+    return { nombre, peso: m.peso, reps: m.reps, fallo: !!m.fallo, notas: m.notas || '' };
+  });
+
+  const payload = {
+    fecha,
+    dia: currentDia,
+    grupo: TEMPLATE.grupos[currentDia] || '',
+    ayuno: !!draft.ayuno,
+    ejercicios,
+    movilidad
+  };
+
+  lastExportJson = JSON.stringify(payload, null, 2);
+  document.getElementById('jsonOut').textContent = lastExportJson;
+  document.getElementById('exportOverlay').classList.remove('hidden');
+}
+
+function downloadJson() {
+  const blob = new Blob([lastExportJson], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+async function shareJson() {
+  try {
+    const file = new File([lastExportJson], 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json', {type:'application/json'});
+    if (navigator.canShare && navigator.canShare({files:[file]})) {
+      await navigator.share({files:[file], title:'Registro de entreno'});
+    } else {
+      downloadJson();
+    }
+  } catch(e) {
+    downloadJson();
+  }
+}
+
+function closeExport() {
+  document.getElementById('exportOverlay').classList.add('hidden');
+}
+
+document.getElementById('ayuno').addEventListener('change', (e) => {
+  draft.ayuno = e.target.checked;
+  persistDraft();
+});
+
+function openConfig() {
+  document.getElementById('grp1').value = TEMPLATE.grupos[1] || '';
+  document.getElementById('grp2').value = TEMPLATE.grupos[2] || '';
+  document.getElementById('grp3').value = TEMPLATE.grupos[3] || '';
+  document.getElementById('grp4').value = TEMPLATE.grupos[4] || '';
+  document.getElementById('tpl1').value = (TEMPLATE.dias[1]||[]).join('\n');
+  document.getElementById('tpl2').value = (TEMPLATE.dias[2]||[]).join('\n');
+  document.getElementById('tpl3').value = (TEMPLATE.dias[3]||[]).join('\n');
+  document.getElementById('tpl4').value = (TEMPLATE.dias[4]||[]).join('\n');
+  document.getElementById('mov1').value = (TEMPLATE.movilidad[1]||[]).join('\n');
+  document.getElementById('mov3').value = (TEMPLATE.movilidad[3]||[]).join('\n');
+  document.getElementById('configOverlay').classList.remove('hidden');
+}
+function closeConfig() { document.getElementById('configOverlay').classList.add('hidden'); }
+function saveConfig() {
+  TEMPLATE.grupos[1] = document.getElementById('grp1').value.trim();
+  TEMPLATE.grupos[2] = document.getElementById('grp2').value.trim();
+  TEMPLATE.grupos[3] = document.getElementById('grp3').value.trim();
+  TEMPLATE.grupos[4] = document.getElementById('grp4').value.trim();
+  TEMPLATE.dias[1] = document.getElementById('tpl1').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  TEMPLATE.dias[2] = document.getElementById('tpl2').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  TEMPLATE.dias[3] = document.getElementById('tpl3').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  TEMPLATE.dias[4] = document.getElementById('tpl4').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  TEMPLATE.movilidad[1] = document.getElementById('mov1').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  TEMPLATE.movilidad[3] = document.getElementById('mov3').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  saveTemplate();
+  closeConfig();
+  initDayButtons();
+  render();
+}
+
+document.getElementById('fecha').value = todayStr();
+document.getElementById('fecha').addEventListener('change', () => switchDia(currentDia));
+initDayButtons();
+switchDia(1);
+</script>
+</body>
+</html>
