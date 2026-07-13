@@ -132,10 +132,12 @@
     <div id="movCards"></div>
   </div>
 
-  <div style="text-align:center; margin-top:18px; display:flex; gap:14px; justify-content:center;">
+  <div style="text-align:center; margin-top:18px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
     <button class="linkbtn" onclick="openConfig()">Editar lista de ejercicios</button>
     <button class="linkbtn" onclick="openImportPrev()">Importar datos (solo primera vez)</button>
+    <button class="linkbtn" id="btnSetupDirect" onclick="setupDirectSave()" style="display:none">Configurar guardado directo</button>
   </div>
+  <div class="msg" id="directSaveStatus" style="text-align:center; margin-top:6px"></div>
 </main>
 
 <div class="footer">
@@ -170,11 +172,14 @@
 <div class="overlay hidden" id="exportOverlay">
   <div class="sheet">
     <h2>Día guardado</h2>
+    <div class="row" style="margin-bottom:10px" id="directSaveRow">
+      <button class="btn btn-primary" style="flex:1" onclick="saveDirect()">Guardar en Drive (directo)</button>
+    </div>
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-primary" style="flex:1" onclick="shareJson()">Compartir a Drive</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="shareJson()">Compartir a Drive</button>
       <button class="btn btn-secondary" style="flex:1" onclick="downloadJson()">Descargar</button>
     </div>
-    <div class="msg">Compartí o mové este archivo a la carpeta <b>Entrenamiento/app/pending</b> en Drive. La app de escritorio lo va a levantar de ahí.</div>
+    <div class="msg">Si no usás "Guardar en Drive (directo)", compartí o mové este archivo a la carpeta <b>Entrenamiento/app/pending</b> en Drive. La app de escritorio lo va a levantar de ahí.</div>
     <pre id="jsonOut"></pre>
     <button class="linkbtn" style="margin-top:10px" onclick="closeExport()">Cerrar</button>
   </div>
@@ -235,7 +240,8 @@ function loadPrev() {
 }
 let PREV = loadPrev();
 
-function findLocalPrev(nombre) {
+function findLocalPrev(nombre, maquina) {
+  maquina = maquina || 'principal';
   let best = null;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -245,11 +251,19 @@ function findLocalPrev(nombre) {
     if (!d || !d.fecha || d.fecha === draft.fecha) continue;
     const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
     if (!entry || (!entry.reps && !entry.peso)) continue;
+    if ((entry.maquina || 'principal') !== maquina) continue;
     if (!best || d.fecha > best.fecha) {
       best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '' };
     }
   }
   return best;
+}
+
+let machineSelection = {};
+function getSelectedMachine(nombre, data) {
+  if (machineSelection[nombre]) return machineSelection[nombre];
+  if (data && data.maquina) return data.maquina;
+  return 'principal';
 }
 
 function openImportPrev() {
@@ -309,6 +323,7 @@ function switchDia(d) {
   currentDia = d;
   const fecha = document.getElementById('fecha').value || todayStr();
   draft = loadDraft(fecha, d);
+  machineSelection = {};
   initDayButtons();
   render();
 }
@@ -350,13 +365,15 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   card.className = 'card' + (data ? ' done' : '');
   card.id = 'card_' + (esMovilidad?'m_':'e_') + idx;
 
-  const prev = findLocalPrev(nombre) || PREV[nombre];
+  const maquina = esMovilidad ? 'principal' : getSelectedMachine(nombre, data);
+  const prev = findLocalPrev(nombre, maquina) || (maquina === 'principal' ? PREV[nombre] : null);
 
   const head = document.createElement('div');
   head.className = 'card-head';
   const orden = esMovilidad ? '' : (ordenRealDe(nombre) ? '<span class="badge">'+ordenRealDe(nombre)+'</span>' : '<span class="badge" style="background:#3a3f4a">'+(idx+1)+'</span>');
-  const hint = (!data && prev) ? '<div class="prev-hint">antes: ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
-  head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + '</span></div>' + hint + '</div>' +
+  const machTag = (!esMovilidad && maquina === 'accesoria') ? ' 🔧' : '';
+  const hint = (!data && prev) ? '<div class="prev-hint">antes' + (maquina==='accesoria'?' (accesoria)':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
+  head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
   head.onclick = () => { card.classList.toggle('open'); };
   card.appendChild(head);
@@ -365,6 +382,18 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   body.className = 'card-body';
 
   if (!esMovilidad) {
+    const machRow = document.createElement('div');
+    machRow.className = 'chiprow';
+    machRow.style.marginBottom = '10px';
+    ['principal','accesoria'].forEach(m => {
+      const chip = document.createElement('div');
+      chip.className = 'chip' + (maquina === m ? ' ss-on' : '');
+      chip.textContent = m === 'principal' ? 'Máquina principal' : '🔧 Máquina accesoria';
+      chip.onclick = () => { machineSelection[nombre] = m; render(); };
+      machRow.appendChild(chip);
+    });
+    body.appendChild(machRow);
+
     const ordenWrap = document.createElement('div');
     ordenWrap.style.marginBottom = '8px';
     ordenWrap.innerHTML = '<label class="small">Orden real (en qué posición lo hiciste)</label>' +
@@ -449,7 +478,8 @@ function guardarSet(nombre, cardId, esMovilidad) {
   } else {
     const ordenEl = document.getElementById('orden_'+cardId);
     const ordenReal = ordenEl ? (parseInt(ordenEl.value, 10) || null) : null;
-    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal };
+    const maquina = getSelectedMachine(nombre, draft.ejercicios[nombre]);
+    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal, maquina };
     syncSS();
   }
   persistDraft();
@@ -491,7 +521,8 @@ function finalizarDia() {
       reps: e.reps,
       ss: e.ss || null,
       fallo: !!e.fallo,
-      notas: e.notas || ''
+      notas: e.notas || '',
+      maquina: e.maquina || 'principal'
     };
   });
   if (ejercicios.length === 0) { alert('No cargaste ningún ejercicio todavía.'); return; }
@@ -518,7 +549,83 @@ function finalizarDia() {
 
   lastExportJson = JSON.stringify(payload, null, 2);
   document.getElementById('jsonOut').textContent = lastExportJson;
+  document.getElementById('directSaveRow').style.display = directSaveReady ? 'flex' : 'none';
   document.getElementById('exportOverlay').classList.remove('hidden');
+}
+
+// ---------- guardado directo a la carpeta pending (si el navegador lo soporta) ----------
+const IDB_NAME = 'entreno-mobile-fs', IDB_STORE = 'handles';
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+let pendingDirHandle = null;
+let directSaveReady = false;
+
+async function initDirectSave() {
+  if (!('showDirectoryPicker' in window)) return;
+  document.getElementById('btnSetupDirect').style.display = 'inline';
+  try {
+    const handle = await idbGet('pendingDir');
+    if (!handle) return;
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      pendingDirHandle = handle;
+      directSaveReady = true;
+      document.getElementById('directSaveStatus').textContent = 'Guardado directo activado ✓';
+    } else {
+      document.getElementById('directSaveStatus').textContent = 'Guardado directo configurado — tocá "Configurar guardado directo" para reactivarlo.';
+    }
+  } catch(e) {}
+}
+
+async function setupDirectSave() {
+  try {
+    const handle = await window.showDirectoryPicker();
+    await idbSet('pendingDir', handle);
+    pendingDirHandle = handle;
+    directSaveReady = true;
+    document.getElementById('directSaveStatus').textContent = 'Guardado directo activado ✓';
+  } catch(e) {
+    document.getElementById('directSaveStatus').textContent = 'No se pudo configurar: ' + e.message;
+  }
+}
+
+async function saveDirect() {
+  try {
+    const name = 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json';
+    const fileHandle = await pendingDirHandle.getFileHandle(name, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(lastExportJson);
+    await writable.close();
+    alert('Guardado directo en la carpeta pending.');
+    closeExport();
+  } catch(e) {
+    alert('No se pudo guardar directo: ' + e.message + '. Usá Compartir o Descargar.');
+  }
 }
 
 function downloadJson() {
@@ -590,6 +697,7 @@ document.getElementById('fecha').value = todayStr();
 document.getElementById('fecha').addEventListener('change', () => switchDia(currentDia));
 initDayButtons();
 switchDia(1);
+initDirectSave();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
