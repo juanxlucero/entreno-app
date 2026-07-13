@@ -260,6 +260,7 @@ function findLocalPrev(nombre, maquina) {
 }
 
 let machineSelection = {};
+let openCardId = null;
 function getSelectedMachine(nombre, data) {
   if (machineSelection[nombre]) return machineSelection[nombre];
   if (data && data.maquina) return data.maquina;
@@ -324,6 +325,7 @@ function switchDia(d) {
   const fecha = document.getElementById('fecha').value || todayStr();
   draft = loadDraft(fecha, d);
   machineSelection = {};
+  openCardId = null;
   initDayButtons();
   render();
 }
@@ -375,7 +377,11 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   const hint = (!data && prev) ? '<div class="prev-hint">antes' + (maquina==='accesoria'?' (accesoria)':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
-  head.onclick = () => { card.classList.toggle('open'); };
+  if (openCardId === card.id) card.classList.add('open');
+  head.onclick = () => {
+    const isOpen = card.classList.toggle('open');
+    openCardId = isOpen ? card.id : null;
+  };
   card.appendChild(head);
 
   const body = document.createElement('div');
