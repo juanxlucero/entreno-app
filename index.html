@@ -615,15 +615,28 @@ async function initDirectSave() {
 }
 
 async function setupDirectSave() {
+  let handle;
   try {
-    const handle = await window.showDirectoryPicker();
-    await idbSet('pendingDir', handle);
-    pendingDirHandle = handle;
-    directSaveReady = true;
-    document.getElementById('directSaveStatus').textContent = 'Guardado directo activado ✓';
+    handle = await window.showDirectoryPicker();
   } catch(e) {
-    document.getElementById('directSaveStatus').textContent = 'No se pudo configurar: ' + e.message;
+    document.getElementById('directSaveStatus').textContent = 'No se pudo elegir la carpeta: ' + e.message;
+    alert('No se pudo elegir la carpeta: ' + e.message);
+    return;
   }
+  // activar ya para esta sesión, aunque falle el guardado persistente
+  pendingDirHandle = handle;
+  directSaveReady = true;
+  let persistOk = true;
+  try {
+    await idbSet('pendingDir', handle);
+  } catch(e) {
+    persistOk = false;
+  }
+  const msg = persistOk
+    ? 'Guardado directo activado ✓ (carpeta: ' + handle.name + ')'
+    : 'Guardado directo activado para esta sesión (carpeta: ' + handle.name + '), pero tu navegador no pudo recordarla — vas a tener que reconfigurar la próxima vez que abras la app.';
+  document.getElementById('directSaveStatus').textContent = msg;
+  alert(msg);
 }
 
 async function saveDirect() {
