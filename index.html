@@ -291,6 +291,12 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+function fechaCorta(iso) {
+  const partes = (iso || '').split('-');
+  if (partes.length !== 3) return '';
+  return partes[2] + '/' + partes[1];
+}
+
 function draftKey(fecha, dia) { return 'entreno_draft_' + fecha + '_' + dia; }
 
 function newDraft(fecha, dia) {
@@ -374,7 +380,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   head.className = 'card-head';
   const orden = esMovilidad ? '' : (ordenRealDe(nombre) ? '<span class="badge">'+ordenRealDe(nombre)+'</span>' : '<span class="badge" style="background:#3a3f4a">'+(idx+1)+'</span>');
   const machTag = (!esMovilidad && maquina === 'accesoria') ? ' 🔧' : '';
-  const hint = (!data && prev) ? '<div class="prev-hint">antes' + (maquina==='accesoria'?' (accesoria)':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
+  const hint = prev ? '<div class="prev-hint">antes' + (prev.fecha ? ' (' + fechaCorta(prev.fecha) + ')' : '') + (maquina==='accesoria'?' [accesoria]':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
   if (openCardId === card.id) card.classList.add('open');
