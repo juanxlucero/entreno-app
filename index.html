@@ -356,7 +356,8 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
     syncing = true;
     setActive(currentIdx);
     viewport.scrollTop = currentIdx * itemH;
-    setTimeout(() => { syncing = false; }, 200);
+    clearTimeout(viewport.__syncOffTimer);
+    viewport.__syncOffTimer = setTimeout(() => { syncing = false; }, 500);
   };
 
   setActive(idx);
@@ -512,7 +513,10 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
         const target = window.scrollY + card.getBoundingClientRect().top - headerH - 12;
         window.scrollTo({ top: Math.max(0, target), behavior: 'auto' });
       });
-      setTimeout(sync, 120); // respaldo por si el primer frame no alcanzó a tener layout
+      // varios reintentos: en celulares reales el layout puede tardar más de un frame
+      setTimeout(sync, 100);
+      setTimeout(sync, 300);
+      setTimeout(sync, 700);
     }
   };
   card.appendChild(head);
@@ -653,7 +657,9 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   if (card.classList.contains('open')) {
     const sync = () => card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
     requestAnimationFrame(sync);
-    setTimeout(sync, 120);
+    setTimeout(sync, 100);
+    setTimeout(sync, 300);
+    setTimeout(sync, 700);
   }
 
   return card;
