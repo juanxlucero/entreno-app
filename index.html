@@ -100,6 +100,26 @@
   textarea.tpl { min-height: 90px; font-family: monospace; font-size: 13px; }
   pre#jsonOut { white-space: pre-wrap; word-break: break-all; background:#101217; border:1px solid var(--border); border-radius:10px; padding:10px; font-size:11px; max-height: 180px; overflow:auto; }
   .msg { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .wheelrow { display:flex; gap:8px; }
+  .wheelcol { flex:1; min-width:0; }
+  .wheelcol.narrow { flex:0 0 76px; }
+  .wheel-viewport {
+    position:relative; height:84px; overflow-y:auto; scroll-snap-type:y mandatory;
+    -webkit-overflow-scrolling:touch; border-radius:10px; background:#101217; border:1px solid var(--border);
+  }
+  .wheel-viewport::-webkit-scrollbar { display:none; }
+  .wheel-pad { height:28px; }
+  .wheel-item {
+    height:28px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center;
+    font-size:15px; color:var(--muted); font-variant-numeric:tabular-nums;
+  }
+  .wheel-item.active { color:var(--text); font-weight:700; font-size:17px; }
+  .wheel-highlight {
+    position:absolute; left:0; right:0; top:28px; height:28px;
+    border-top:1px solid var(--accent); border-bottom:1px solid var(--accent);
+    background:rgba(79,140,255,.08); pointer-events:none;
+  }
+  .fallo-inline { display:flex; align-items:center; justify-content:center; height:84px; }
 </style>
 </head>
 <body>
@@ -267,6 +287,91 @@ function getSelectedMachine(nombre, data) {
   return 'principal';
 }
 
+// ---------- selector tipo rueda ----------
+// values: array of {label, value}. Devuelve el elemento columna; el valor elegido
+// se refleja en un <input type="hidden" id="hiddenId"> para que el resto del código
+// (guardarSet, etc.) lo lea igual que antes.
+function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
+  const col = document.createElement('div');
+  col.className = 'wheelcol' + (narrow ? ' narrow' : '');
+
+  const viewport = document.createElement('div');
+  viewport.className = 'wheel-viewport';
+  let html = '<div class="wheel-pad"></div>';
+  values.forEach(v => { html += '<div class="wheel-item">' + v.label + '</div>'; });
+  html += '<div class="wheel-pad"></div>';
+  viewport.innerHTML = html;
+
+  const hl = document.createElement('div');
+  hl.className = 'wheel-highlight';
+
+  const hidden = document.createElement('input');
+  hidden.type = 'hidden';
+  hidden.id = hiddenId;
+
+  col.appendChild(viewport);
+  col.appendChild(hl);
+  col.appendChild(hidden);
+
+  const itemH = 28;
+  let idx = values.findIndex(v => String(v.value) === String(initialValue));
+  if (idx < 0) idx = 0;
+  viewport.dataset.itemIndex = idx;
+  viewport.dataset.itemH = itemH;
+
+  let currentIdx = idx;
+  function setActive(i) {
+    currentIdx = i;
+    const items = viewport.querySelectorAll('.wheel-item');
+    items.forEach((el, k) => el.classList.toggle('active', k === i));
+    viewport.dataset.itemIndex = i;
+    const v = values[i];
+    if (v !== undefined) {
+      hidden.value = v.value;
+      if (onSelect) onSelect(v.value);
+    }
+  }
+
+  let timer;
+  viewport.addEventListener('scroll', () => {
+    const i = Math.max(0, Math.min(values.length - 1, Math.round(viewport.scrollTop / itemH)));
+    setActive(i);
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const i2 = Math.max(0, Math.min(values.length - 1, Math.round(viewport.scrollTop / itemH)));
+      viewport.scrollTo({ top: i2 * itemH, behavior: 'smooth' });
+    }, 100);
+  });
+
+  // fija el valor real sin depender del scroll (que puede fallar si el elemento
+  // todavía está oculto), y de paso intenta dejar el scroll visualmente correcto
+  viewport.__wheelSync = () => {
+    setActive(currentIdx);
+    viewport.scrollTop = currentIdx * itemH;
+  };
+
+  setActive(idx);
+  requestAnimationFrame(() => { viewport.__wheelSync(); });
+
+  return col;
+}
+
+function pesoToWheelParts(pesoStr) {
+  if (!pesoStr) return { entero: 0, decimal: 0 };
+  const norm = String(pesoStr).replace(',', '.');
+  const num = parseFloat(norm);
+  if (Number.isNaN(num)) return { entero: 0, decimal: 0 };
+  const entero = Math.floor(num);
+  const decimal = Math.round((num - entero) * 100);
+  const decimalSnapped = [0, 25, 50, 75].reduce((a, b) => Math.abs(b - decimal) < Math.abs(a - decimal) ? b : a, 0);
+  return { entero, decimal: decimalSnapped };
+}
+function wheelPartsToPeso(entero, decimal) {
+  if (!decimal) return String(entero);
+  const frac = decimal === 50 ? '5' : String(decimal);
+  return entero + ',' + frac;
+}
+
 function openImportPrev() {
   document.getElementById('prevInput').value = '';
   document.getElementById('prevOverlay').classList.remove('hidden');
@@ -387,6 +492,11 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   head.onclick = () => {
     const isOpen = card.classList.toggle('open');
     openCardId = isOpen ? card.id : null;
+    if (isOpen) {
+      requestAnimationFrame(() => {
+        card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
+      });
+    }
   };
   card.appendChild(head);
 
@@ -396,7 +506,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   if (!esMovilidad) {
     const machRow = document.createElement('div');
     machRow.className = 'chiprow';
-    machRow.style.marginBottom = '10px';
+    machRow.style.marginBottom = '6px';
     ['principal','accesoria'].forEach(m => {
       const chip = document.createElement('div');
       chip.className = 'chip' + (maquina === m ? ' ss-on' : '');
@@ -406,19 +516,67 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
     });
     body.appendChild(machRow);
 
-    const ordenWrap = document.createElement('div');
-    ordenWrap.style.marginBottom = '8px';
-    ordenWrap.innerHTML = '<label class="small">Orden real (en qué posición lo hiciste)</label>' +
-      '<input type="number" inputmode="numeric" id="orden_'+card.id+'" value="'+(data && data.ordenReal ? data.ordenReal : idx+1)+'">';
-    body.appendChild(ordenWrap);
+    const ordenInit = (data && data.ordenReal) ? data.ordenReal : idx + 1;
+    const ordenLabel = document.createElement('div');
+    ordenLabel.className = 'wheelrow';
+    ordenLabel.style.marginBottom = '2px';
+    ordenLabel.innerHTML = '<div class="wheelcol narrow"><label class="small">Orden</label></div><div class="wheelcol"></div>';
+    body.appendChild(ordenLabel);
+
+    const ordenRow = document.createElement('div');
+    ordenRow.className = 'wheelrow';
+    ordenRow.style.marginBottom = '6px';
+    const ordenValues = fullList.map((n, i) => ({ label: String(i + 1), value: i + 1 }));
+    ordenRow.appendChild(buildWheel('orden_' + card.id, ordenValues, ordenInit, true));
+    const falloWrap = document.createElement('div');
+    falloWrap.className = 'wheelcol fallo-inline';
+    const fallo = document.createElement('div');
+    fallo.className = 'chip' + (data && data.fallo ? ' on' : '');
+    fallo.textContent = '⚠ Fallo';
+    fallo.onclick = () => fallo.classList.toggle('on');
+    fallo.id = 'fallo_' + card.id;
+    falloWrap.appendChild(fallo);
+    ordenRow.appendChild(falloWrap);
+    body.appendChild(ordenRow);
   }
 
-  const grid = document.createElement('div');
-  grid.className = 'grid2';
-  grid.innerHTML =
-    '<div><label class="small">Reps</label><input type="number" inputmode="numeric" id="reps_'+card.id+'" value="'+(data?data.reps:'')+'"></div>' +
-    '<div><label class="small">Peso (kg)</label><input type="text" inputmode="decimal" id="peso_'+card.id+'" value="'+(data?data.peso:'')+'"></div>';
-  body.appendChild(grid);
+  const repsInit = (data && data.reps) ? data.reps : (prev ? prev.reps : 8);
+  const pesoOrigen = (data && data.peso) ? data.peso : (prev ? prev.peso : '0');
+  const pesoParts = pesoToWheelParts(pesoOrigen);
+
+  const wheelLabels = document.createElement('div');
+  wheelLabels.className = 'wheelrow';
+  wheelLabels.style.marginBottom = '2px';
+  wheelLabels.innerHTML = '<div class="wheelcol"><label class="small">Reps</label></div>' +
+    '<div class="wheelcol"><label class="small">Peso (kg)</label></div>' +
+    '<div class="wheelcol narrow"><label class="small">,</label></div>';
+  body.appendChild(wheelLabels);
+
+  const wheelRow = document.createElement('div');
+  wheelRow.className = 'wheelrow';
+  wheelRow.style.marginBottom = '6px';
+  const repsValues = Array.from({ length: 31 }, (_, i) => ({ label: String(i), value: i }));
+  const enteroValues = Array.from({ length: 251 }, (_, i) => ({ label: String(i), value: i }));
+  const decimalValues = [0, 25, 50, 75].map(d => ({ label: ',' + (d === 50 ? '5' : (d === 0 ? '0' : d)), value: d }));
+
+  let pesoEntero = pesoParts.entero, pesoDecimal = pesoParts.decimal;
+  const pesoHiddenId = 'peso_' + card.id;
+  const pesoHidden = document.createElement('input');
+  pesoHidden.type = 'hidden';
+  pesoHidden.id = pesoHiddenId;
+  pesoHidden.value = wheelPartsToPeso(pesoEntero, pesoDecimal);
+
+  wheelRow.appendChild(buildWheel('reps_' + card.id, repsValues, repsInit, false));
+  wheelRow.appendChild(buildWheel('peso_entero_' + card.id, enteroValues, pesoEntero, false, (v) => {
+    pesoEntero = v;
+    pesoHidden.value = wheelPartsToPeso(pesoEntero, pesoDecimal);
+  }));
+  wheelRow.appendChild(buildWheel('peso_decimal_' + card.id, decimalValues, pesoDecimal, true, (v) => {
+    pesoDecimal = v;
+    pesoHidden.value = wheelPartsToPeso(pesoEntero, pesoDecimal);
+  }));
+  wheelRow.appendChild(pesoHidden);
+  body.appendChild(wheelRow);
 
   if (!esMovilidad) {
     const ssLabel = document.createElement('label');
@@ -444,16 +602,18 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
     }
   }
 
-  const chiprow = document.createElement('div');
-  chiprow.className = 'chiprow';
-  chiprow.style.marginTop = '8px';
-  const fallo = document.createElement('div');
-  fallo.className = 'chip' + (data && data.fallo ? ' on' : '');
-  fallo.textContent = '⚠ Fallo';
-  fallo.onclick = () => fallo.classList.toggle('on');
-  fallo.id = 'fallo_' + card.id;
-  chiprow.appendChild(fallo);
-  body.appendChild(chiprow);
+  if (esMovilidad) {
+    const chiprow = document.createElement('div');
+    chiprow.className = 'chiprow';
+    chiprow.style.marginTop = '8px';
+    const fallo = document.createElement('div');
+    fallo.className = 'chip' + (data && data.fallo ? ' on' : '');
+    fallo.textContent = '⚠ Fallo';
+    fallo.onclick = () => fallo.classList.toggle('on');
+    fallo.id = 'fallo_' + card.id;
+    chiprow.appendChild(fallo);
+    body.appendChild(chiprow);
+  }
 
   const notasLabel = document.createElement('label');
   notasLabel.className = 'small';
@@ -461,7 +621,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   body.appendChild(notasLabel);
   const notas = document.createElement('textarea');
   notas.id = 'notas_' + card.id;
-  notas.rows = 2;
+  notas.rows = 1;
   notas.value = data ? (data.notas||'') : '';
   body.appendChild(notas);
 
@@ -472,6 +632,13 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   body.appendChild(saveBtn);
 
   card.appendChild(body);
+
+  if (card.classList.contains('open')) {
+    requestAnimationFrame(() => {
+      card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
+    });
+  }
+
   return card;
 }
 
