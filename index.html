@@ -21,6 +21,7 @@
     --border: #2a2e37;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { overflow-anchor: none; }
   body {
     margin: 0;
     font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
@@ -292,6 +293,22 @@ function getSelectedMachine(nombre, data) {
 // values: array of {label, value}. Devuelve el elemento columna; el valor elegido
 // se refleja en un <input type="hidden" id="hiddenId"> para que el resto del código
 // (guardarSet, etc.) lo lea igual que antes.
+// si la tarjeta abierta es más alta que la pantalla, el scroll inicial (que alinea
+// el principio de la tarjeta justo debajo del header) puede dejar el botón Guardar
+// tapado por el footer fijo. Esto empuja el scroll un poco más para garantizar que
+// el botón quede visible, aunque eso implique perder de vista el título de la tarjeta.
+function ensureGuardarVisible(card) {
+  const btn = card.querySelector('.savebtn');
+  const footer = document.querySelector('.footer');
+  if (!btn || !footer) return;
+  const footerH = footer.offsetHeight;
+  const btnRect = btn.getBoundingClientRect();
+  const overflow = btnRect.bottom - (window.innerHeight - footerH - 28);
+  if (overflow > 0) {
+    window.scrollBy({ top: overflow, behavior: 'auto' });
+  }
+}
+
 function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
   const col = document.createElement('div');
   col.className = 'wheelcol' + (narrow ? ' narrow' : '');
@@ -517,7 +534,9 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
       // varios reintentos: en celulares reales el layout puede tardar más de un frame
       setTimeout(sync, 100);
       setTimeout(sync, 300);
-      setTimeout(sync, 700);
+      setTimeout(() => { sync(); ensureGuardarVisible(card); }, 700);
+      setTimeout(() => { ensureGuardarVisible(card); }, 1100);
+      setTimeout(() => { ensureGuardarVisible(card); }, 1800);
     }
   };
   card.appendChild(head);
@@ -660,7 +679,9 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
     requestAnimationFrame(sync);
     setTimeout(sync, 100);
     setTimeout(sync, 300);
-    setTimeout(sync, 700);
+    setTimeout(() => { sync(); ensureGuardarVisible(card); }, 700);
+    setTimeout(() => { ensureGuardarVisible(card); }, 1100);
+    setTimeout(() => { ensureGuardarVisible(card); }, 1800);
   }
 
   return card;
