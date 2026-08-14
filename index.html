@@ -59,6 +59,7 @@
   .section-title { font-size: 12px; text-transform: uppercase; letter-spacing:.05em; color: var(--muted); margin: 18px 0 8px; }
   .card {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px;
+    scroll-margin-top: 132px;
   }
   .card.done { background: var(--card-done); border-color: #234a34; }
   .card-head { display:flex; justify-content: space-between; align-items:center; cursor: pointer; gap: 8px; }
@@ -104,22 +105,22 @@
   .wheelcol { flex:1; min-width:0; }
   .wheelcol.narrow { flex:0 0 76px; }
   .wheel-viewport {
-    position:relative; height:84px; overflow-y:auto; scroll-snap-type:y mandatory;
+    position:relative; height:72px; overflow-y:auto; scroll-snap-type:y mandatory;
     -webkit-overflow-scrolling:touch; border-radius:10px; background:#101217; border:1px solid var(--border);
   }
   .wheel-viewport::-webkit-scrollbar { display:none; }
-  .wheel-pad { height:28px; }
+  .wheel-pad { height:24px; }
   .wheel-item {
-    height:28px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center;
-    font-size:15px; color:var(--muted); font-variant-numeric:tabular-nums;
+    height:24px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center;
+    font-size:14px; color:var(--muted); font-variant-numeric:tabular-nums;
   }
-  .wheel-item.active { color:var(--text); font-weight:700; font-size:17px; }
+  .wheel-item.active { color:var(--text); font-weight:700; font-size:16px; }
   .wheel-highlight {
-    position:absolute; left:0; right:0; top:28px; height:28px;
+    position:absolute; left:0; right:0; top:24px; height:24px;
     border-top:1px solid var(--accent); border-bottom:1px solid var(--accent);
     background:rgba(79,140,255,.08); pointer-events:none;
   }
-  .fallo-inline { display:flex; align-items:center; justify-content:center; height:84px; }
+  .fallo-inline { display:flex; align-items:center; justify-content:center; height:72px; }
 </style>
 </head>
 <body>
@@ -313,7 +314,7 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
   col.appendChild(hl);
   col.appendChild(hidden);
 
-  const itemH = 28;
+  const itemH = 24;
   let idx = values.findIndex(v => String(v.value) === String(initialValue));
   if (idx < 0) idx = 0;
   viewport.dataset.itemIndex = idx;
@@ -332,8 +333,14 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
     }
   }
 
+  // mientras estamos re-sincronizando el scroll a mano (ver __wheelSync), ignoramos
+  // los eventos "scroll" que dispare esa misma asignación: si el elemento todavía no
+  // tiene layout (recién se hizo visible), el navegador puede reportar scrollTop=0
+  // y pisar el valor correcto que ya habíamos fijado.
+  let syncing = false;
   let timer;
   viewport.addEventListener('scroll', () => {
+    if (syncing) return;
     const i = Math.max(0, Math.min(values.length - 1, Math.round(viewport.scrollTop / itemH)));
     setActive(i);
     clearTimeout(timer);
@@ -346,12 +353,17 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
   // fija el valor real sin depender del scroll (que puede fallar si el elemento
   // todavía está oculto), y de paso intenta dejar el scroll visualmente correcto
   viewport.__wheelSync = () => {
+    syncing = true;
     setActive(currentIdx);
     viewport.scrollTop = currentIdx * itemH;
+    setTimeout(() => { syncing = false; }, 200);
   };
 
   setActive(idx);
-  requestAnimationFrame(() => { viewport.__wheelSync(); });
+  // ojo: no se intenta el scroll visual acá — si la tarjeta todavía está oculta
+  // (display:none), el navegador ignora el scrollTop y dispara un evento de
+  // scroll con posición 0, pisando el valor recién fijado. El scroll visual
+  // se hace en buildCard, cuando la tarjeta realmente se muestra.
 
   return col;
 }
@@ -493,9 +505,14 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
     const isOpen = card.classList.toggle('open');
     openCardId = isOpen ? card.id : null;
     if (isOpen) {
+      const sync = () => card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
       requestAnimationFrame(() => {
-        card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
+        sync();
+        const headerH = document.querySelector('header').offsetHeight;
+        const target = window.scrollY + card.getBoundingClientRect().top - headerH - 12;
+        window.scrollTo({ top: Math.max(0, target), behavior: 'auto' });
       });
+      setTimeout(sync, 120); // respaldo por si el primer frame no alcanzó a tener layout
     }
   };
   card.appendChild(head);
@@ -634,9 +651,9 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   card.appendChild(body);
 
   if (card.classList.contains('open')) {
-    requestAnimationFrame(() => {
-      card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
-    });
+    const sync = () => card.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
+    requestAnimationFrame(sync);
+    setTimeout(sync, 120);
   }
 
   return card;
