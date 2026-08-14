@@ -333,14 +333,18 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
     }
   }
 
-  // mientras estamos re-sincronizando el scroll a mano (ver __wheelSync), ignoramos
-  // los eventos "scroll" que dispare esa misma asignación: si el elemento todavía no
-  // tiene layout (recién se hizo visible), el navegador puede reportar scrollTop=0
-  // y pisar el valor correcto que ya habíamos fijado.
-  let syncing = false;
+  // el valor solo puede cambiar por scroll una vez que el usuario tocó de verdad
+  // la rueda (touch/mouse). Así, cualquier evento "scroll" fantasma disparado por
+  // nuestra propia sincronización visual (posicionar la rueda al abrir la tarjeta,
+  // mientras todavía no tiene layout real) nunca puede pisar el valor correcto.
+  let userTouched = false;
+  ['pointerdown', 'touchstart', 'mousedown'].forEach(ev => {
+    viewport.addEventListener(ev, () => { userTouched = true; }, { passive: true });
+  });
+
   let timer;
   viewport.addEventListener('scroll', () => {
-    if (syncing) return;
+    if (!userTouched) return;
     const i = Math.max(0, Math.min(values.length - 1, Math.round(viewport.scrollTop / itemH)));
     setActive(i);
     clearTimeout(timer);
@@ -353,11 +357,8 @@ function buildWheel(hiddenId, values, initialValue, narrow, onSelect) {
   // fija el valor real sin depender del scroll (que puede fallar si el elemento
   // todavía está oculto), y de paso intenta dejar el scroll visualmente correcto
   viewport.__wheelSync = () => {
-    syncing = true;
     setActive(currentIdx);
     viewport.scrollTop = currentIdx * itemH;
-    clearTimeout(viewport.__syncOffTimer);
-    viewport.__syncOffTimer = setTimeout(() => { syncing = false; }, 500);
   };
 
   setActive(idx);
@@ -685,6 +686,7 @@ function guardarSet(nombre, cardId, esMovilidad) {
     syncSS();
   }
   persistDraft();
+  if (openCardId === cardId) openCardId = null;
   render();
 }
 
