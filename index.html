@@ -275,7 +275,7 @@ function loadPrev() {
 }
 let PREV = loadPrev();
 
-function findLocalPrev(nombre, maquina) {
+function findLocalPrev(nombre, maquina, soloNormal) {
   maquina = maquina || 'principal';
   let best = null;
   for (let i = 0; i < localStorage.length; i++) {
@@ -287,6 +287,7 @@ function findLocalPrev(nombre, maquina) {
     const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
     if (!entry || (!entry.reps && !entry.peso)) continue;
     if ((entry.maquina || 'principal') !== maquina) continue;
+    if (soloNormal && entry.retornoAplicado) continue;
     if (!best || d.fecha > best.fecha) {
       best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '' };
     }
@@ -523,7 +524,12 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   card.id = 'card_' + (esMovilidad?'m_':'e_') + idx;
 
   const maquina = esMovilidad ? 'principal' : getSelectedMachine(nombre, data);
-  const prev = findLocalPrev(nombre, maquina) || (maquina === 'principal' ? PREV[nombre] : null);
+  // en modo retorno, "antes" tiene que ser la última sesión normal (100%) —
+  // si no, la semana siguiente calcularía el % sobre un peso ya reducido.
+  const usarSoloNormal = !esMovilidad && !!retornoPct;
+  const prev = findLocalPrev(nombre, maquina, usarSoloNormal)
+    || (usarSoloNormal ? findLocalPrev(nombre, maquina, false) : null)
+    || (maquina === 'principal' ? PREV[nombre] : null);
 
   const head = document.createElement('div');
   head.className = 'card-head';
@@ -717,7 +723,7 @@ function guardarSet(nombre, cardId, esMovilidad) {
     const ordenEl = document.getElementById('orden_'+cardId);
     const ordenReal = ordenEl ? (parseInt(ordenEl.value, 10) || null) : null;
     const maquina = getSelectedMachine(nombre, draft.ejercicios[nombre]);
-    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal, maquina };
+    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal, maquina, retornoAplicado: retornoPct || null };
     syncSS();
   }
   persistDraft();
@@ -761,7 +767,8 @@ function finalizarDia() {
       ss: e.ss || null,
       fallo: !!e.fallo,
       notas: e.notas || '',
-      maquina: e.maquina || 'principal'
+      maquina: e.maquina || 'principal',
+      retornoAplicado: e.retornoAplicado || null
     };
   });
   if (ejercicios.length === 0) { alert('No cargaste ningún ejercicio todavía.'); return; }
