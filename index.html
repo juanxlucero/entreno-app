@@ -146,6 +146,19 @@
     </label>
   </div>
 
+  <div class="toggle-row" style="flex-wrap:wrap; gap:8px;">
+    <span>Modo retorno (después de un corte)</span>
+    <label class="switch">
+      <input type="checkbox" id="retornoOn">
+      <span class="slider"></span>
+    </label>
+    <div id="retornoPctRow" class="chiprow hidden" style="width:100%; margin-top:4px;">
+      <div class="chip" data-pct="50">50%</div>
+      <div class="chip" data-pct="75">75%</div>
+      <div class="chip" data-pct="90">90%</div>
+    </div>
+  </div>
+
   <div class="section-title" id="grupoTitle">Ejercicios</div>
   <div id="cards"></div>
 
@@ -516,7 +529,8 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   head.className = 'card-head';
   const orden = esMovilidad ? '' : (ordenRealDe(nombre) ? '<span class="badge">'+ordenRealDe(nombre)+'</span>' : '<span class="badge" style="background:#3a3f4a">'+(idx+1)+'</span>');
   const machTag = (!esMovilidad && maquina === 'accesoria') ? ' 🔧' : '';
-  const hint = prev ? '<div class="prev-hint">antes' + (prev.fecha ? ' (' + fechaCorta(prev.fecha) + ')' : '') + (maquina==='accesoria'?' [accesoria]':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + '</div>' : '';
+  const retornoSugerido = (!esMovilidad && retornoPct && prev) ? calcRetornoPeso(prev.peso, retornoPct) : null;
+  const hint = prev ? '<div class="prev-hint">antes' + (prev.fecha ? ' (' + fechaCorta(prev.fecha) + ')' : '') + (maquina==='accesoria'?' [accesoria]':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + (retornoSugerido ? ' → sugerido ' + retornoPct + '%: ' + retornoSugerido : '') + '</div>' : '';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
   if (openCardId === card.id) card.classList.add('open');
@@ -582,7 +596,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   }
 
   const repsInit = (data && data.reps) ? data.reps : (prev ? prev.reps : 8);
-  const pesoOrigen = (data && data.peso) ? data.peso : (prev ? prev.peso : '0');
+  const pesoOrigen = (data && data.peso) ? data.peso : (retornoSugerido || (prev ? prev.peso : '0'));
   const pesoParts = pesoToWheelParts(pesoOrigen);
 
   const wheelLabels = document.createElement('div');
@@ -899,6 +913,48 @@ document.getElementById('ayuno').addEventListener('change', (e) => {
   draft.ayuno = e.target.checked;
   persistDraft();
 });
+
+// ---------- modo retorno (después de un corte, cargar % del peso habitual) ----------
+let retornoPct = (function(){
+  try { return JSON.parse(localStorage.getItem('entreno_retorno_v1')); } catch(e) { return null; }
+})();
+function saveRetorno() {
+  localStorage.setItem('entreno_retorno_v1', JSON.stringify(retornoPct));
+}
+function calcRetornoPeso(pesoStr, pct) {
+  const num = parseFloat(String(pesoStr || '0').replace(',', '.'));
+  if (Number.isNaN(num) || !num) return null;
+  const rounded = Math.round(num * pct / 100 * 4) / 4;
+  const s = String(rounded);
+  return s.includes('.') ? s.replace('.', ',') : s;
+}
+function initRetornoUI() {
+  const onEl = document.getElementById('retornoOn');
+  const row = document.getElementById('retornoPctRow');
+  onEl.checked = !!retornoPct;
+  row.classList.toggle('hidden', !retornoPct);
+  row.querySelectorAll('.chip').forEach(chip => {
+    chip.classList.toggle('ss-on', retornoPct === Number(chip.dataset.pct));
+    chip.onclick = () => {
+      retornoPct = Number(chip.dataset.pct);
+      onEl.checked = true;
+      saveRetorno();
+      initRetornoUI();
+      render();
+    };
+  });
+  onEl.onchange = () => {
+    if (onEl.checked) {
+      retornoPct = retornoPct || 50;
+    } else {
+      retornoPct = null;
+    }
+    saveRetorno();
+    initRetornoUI();
+    render();
+  };
+}
+initRetornoUI();
 
 function openConfig() {
   document.getElementById('grp1').value = TEMPLATE.grupos[1] || '';
