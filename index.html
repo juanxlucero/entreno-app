@@ -218,6 +218,10 @@
   .day-popover[hidden] { display: none; }
   .day-popover hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
   .rstatus { font-size: 11.5px; color: var(--muted); margin-top: 8px; text-align: center; }
+  .pending-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
+  .pending-item:last-child { border-bottom: none; }
+  .rtag.err { background: rgba(255,93,93,.16); color: var(--danger); }
+  .logbox { background: #101217; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 11.5px; overflow: auto; max-height: 220px; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -340,6 +344,47 @@
   </div>
 </div>
 
+<div class="view rview" id="view-pendientes">
+  <h1>Pendientes y mantenimiento</h1>
+  <p class="sub">Aplicá lo cargado y preparás la próxima semana, desde el celu.</p>
+
+  <div class="rcard">
+    <div class="row" style="flex-direction:column">
+      <button class="btn btn-primary" id="btnNuevaSemana" disabled>Preparar semana nueva</button>
+      <button class="btn btn-secondary" id="btnSnapshot" disabled>Exportar snapshot</button>
+    </div>
+  </div>
+
+  <div class="rcard" id="snapshotCard" style="display:none">
+    <h3>Snapshot</h3>
+    <div class="row" style="margin-bottom:10px"><button class="btn btn-primary" id="btnCopySnapshot">Copiar</button></div>
+    <pre id="snapshotOut" class="logbox"></pre>
+  </div>
+
+  <div class="rcard" id="pendingCard">
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h3 style="margin:0">Pendientes</h3>
+    </div>
+    <button class="btn btn-primary" id="btnApplyAll" style="margin-bottom:10px">Aplicar todos los que no tengan error</button>
+    <div id="pendingList"></div>
+  </div>
+
+  <div class="rcard" id="previewCard" style="display:none">
+    <h3>Vista previa</h3>
+    <div id="previewInfo" class="msg" style="margin-bottom:8px"></div>
+    <table class="rtable" id="previewTable"><thead><tr><th>Fila</th><th>Ej.</th><th>Col</th><th>Valor</th></tr></thead><tbody></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <button class="btn btn-primary" id="btnConfirmApply">Aplicar</button>
+      <button class="btn btn-secondary" id="btnCancelApply">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="rcard" id="logCardP" style="display:none">
+    <h3>Log</h3>
+    <pre id="logOutP" class="logbox"></pre>
+  </div>
+</div>
+
 <div class="rstatus" id="rstatus" style="padding-bottom:70px">Elegí la carpeta Entrenamiento para ver tus estadísticas.</div>
 
 <nav class="tabbar" id="tabbar">
@@ -347,6 +392,7 @@
   <button class="tabitem" data-view="semana"><span class="ico">📅</span>Semana</button>
   <button class="tabitem" data-view="progreso"><span class="ico">📈</span>Progreso</button>
   <button class="tabitem" data-view="constancia"><span class="ico">🔥</span>Constancia</button>
+  <button class="tabitem" data-view="pendientes"><span class="ico">📥</span>Pend.</button>
 </nav>
 
 <div class="overlay hidden" id="configOverlay">
@@ -1008,8 +1054,11 @@ async function onRootChosen(handle) {
   rootHandle = handle;
   appHandle = await rootHandle.getDirectoryHandle('app');
   pendingHandle = await appHandle.getDirectoryHandle('pending');
+  doneHandle = await appHandle.getDirectoryHandle('done', { create: true });
   xlsxHandle = await rootHandle.getFileHandle('ENTRENO 25.xlsx');
   directSaveReady = true;
+  document.getElementById('btnNuevaSemana').disabled = false;
+  document.getElementById('btnSnapshot').disabled = false;
 }
 
 async function initDirectSave() {
@@ -1197,9 +1246,11 @@ if ('serviceWorker' in navigator) {
 // =====================================================================
 const NOW_YEAR = new Date().getFullYear();
 const SHEET_NAME = String(NOW_YEAR);
-const COLS = { dia:1, fecha:2, grupo:3, orden:4, ejercicio:5, peso:6, series:7, reps:8, mrep:9, mkg:10, rm:11, ss:12, fallo:13, notas:14 };
+const COLS = { dia:1, fecha:2, grupo:3, orden:4, ejercicio:5, peso:6, series:7, reps:8, mrep:9, mkg:10, rm:11, ss:12, fallo:13, notas:14, polea1:15, polea2:16, ayuno:17 };
+const COLLETTERS = {1:'A',2:'B',3:'C',4:'D',5:'E',6:'F',7:'G',8:'H',9:'I',10:'J',11:'K',12:'L',13:'M',14:'N',15:'O',16:'P',17:'Q'};
 
-let rootHandle = null, appHandle = null, pendingHandle = null, xlsxHandle = null;
+let rootHandle = null, appHandle = null, pendingHandle = null, doneHandle = null, xlsxHandle = null;
+let pendingFiles = [], currentApply = null;
 let DATA = null;
 let statsLoaded = false, statsLoading = false;
 let prevYearAvailable = false;
@@ -1717,6 +1768,317 @@ document.addEventListener('click', (e) => {
   if (!pop.hidden && !pop.contains(e.target)) hideDayPopover(true);
 });
 
+// ---------- Pendientes y mantenimiento (mismo motor que desktop.html/panel.html) ----------
+async function loadWorkbookRaw() {
+  const file = await xlsxHandle.getFile();
+  const buf = await file.arrayBuffer();
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  return wb;
+}
+async function saveWorkbook(wb) {
+  const buf = await wb.xlsx.writeBuffer();
+  const writable = await xlsxHandle.createWritable();
+  await writable.write(buf);
+  await writable.close();
+}
+function logP(msg) {
+  const el = document.getElementById('logOutP');
+  document.getElementById('logCardP').style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function parseNum(v) { if (v === null || v === undefined || v === '') return null; return parseFloat(String(v).replace(',', '.')); }
+function toSheetNumberString(v) { if (v === null || v === undefined) return ''; return String(v).trim().replace('.', ','); }
+function fmtDelta(n) { if (n === null || Number.isNaN(n)) return ''; const r = Math.round(n * 100) / 100; return toSheetNumberString(r); }
+function dateToDDMMYYYY(iso) { const [y,m,d] = iso.split('-'); return d + '/' + m + '/' + y; }
+function ddmmyyyyToOADate(str) { const [d,m,y] = str.split('/').map(Number); const dt = new Date(Date.UTC(y, m-1, d)); const epoch = Date.UTC(1899, 11, 30); return Math.round((dt - epoch) / 86400000); }
+function findDayGroup(weekBlock, dia) { return weekBlock.groups.find(g => g.grupo !== 'MOVILIDAD' && g.dia === String(dia)) || null; }
+function findMovGroup(weekBlock) { return weekBlock.groups.find(g => g.grupo === 'MOVILIDAD') || null; }
+function findPrevValue(structure, ws, blockIndex, exerciseName, isMov, dia) {
+  for (let b = blockIndex - 1; b >= 0; b--) {
+    const wb = structure.weekBlocks[b];
+    const group = isMov ? findMovGroup(wb) : findDayGroup(wb, dia);
+    if (!group) continue;
+    for (let r = group.start; r <= group.end; r++) {
+      if (ws.getCell(r, COLS.ejercicio).text.trim() === exerciseName.trim()) {
+        const peso = ws.getCell(r, COLS.peso).text;
+        const reps = ws.getCell(r, COLS.reps).text;
+        if (peso || reps) return { peso, reps };
+      }
+    }
+  }
+  return null;
+}
+function computeWrites(structure, ws, entry) {
+  const writes = [];
+  const errors = [];
+  let blockIndex = structure.weekBlocks.length - 1;
+  while (blockIndex >= 0 && structure.weekBlocks[blockIndex].groups.length === 0) blockIndex--;
+  const wb = structure.weekBlocks[blockIndex];
+  if (!wb) { errors.push('No hay una semana preparada todavía. Usá "Preparar semana nueva" primero.'); return { writes, errors }; }
+  const dayGroup = findDayGroup(wb, entry.dia);
+  if (!dayGroup) { errors.push('No encontré el bloque del día ' + entry.dia + ' en la semana actual.'); return { writes, errors }; }
+  const n = dayGroup.end - dayGroup.start + 1;
+  if (entry.ejercicios.some(e => e.posicionIdeal > n)) errors.push('La cantidad de ejercicios no coincide con la plantilla de la planilla (' + n + ' filas). Revisá el orden.');
+  const blank = isGroupBlank(ws, dayGroup);
+  const existingDate = cellDateDDMMYYYY(ws.getCell(dayGroup.start, COLS.fecha));
+  if (!blank && existingDate && existingDate !== dateToDDMMYYYY(entry.fecha)) {
+    errors.push('El bloque del día ' + entry.dia + ' ya tiene datos de otra fecha (' + existingDate + '). Corré "Preparar semana nueva" antes de cargar esta.');
+    return { writes, errors };
+  }
+  entry.ejercicios.forEach(ex => {
+    const row = dayGroup.start + (ex.posicionIdeal - 1);
+    const rowExerciseName = ws.getCell(row, COLS.ejercicio).text.trim();
+    if (rowExerciseName !== ex.nombre.trim()) { errors.push('Fila ' + row + ': se esperaba "' + rowExerciseName + '" pero el registro dice "' + ex.nombre + '". Revisá la plantilla del celular.'); return; }
+    const ordenStr = String(ex.ordenReal) + (ex.ordenReal !== ex.posicionIdeal ? '*' : '');
+    const esAccesoria = ex.maquina === 'accesoria';
+    writes.push({ row, col: 'B', value: dateToDDMMYYYY(entry.fecha), isDate: true, label: ex.nombre });
+    writes.push({ row, col: 'D', value: ordenStr, label: ex.nombre });
+    if (ex.ss) writes.push({ row, col: 'L', value: 'S', label: ex.nombre });
+    if (ex.fallo) writes.push({ row, col: 'M', value: 'S', label: ex.nombre });
+    const notaRetorno = ex.retornoAplicado ? 'Retorno ' + ex.retornoAplicado + '%' : '';
+    const notaFinal = [notaRetorno, ex.notas].filter(Boolean).join(' · ');
+    if (notaFinal) writes.push({ row, col: 'N', value: notaFinal, label: ex.nombre });
+    writes.push({ row, col: 'Q', value: entry.ayuno ? 'Sí' : 'No', label: ex.nombre });
+    if (esAccesoria) {
+      writes.push({ row, col: 'O', value: toSheetNumberString(ex.peso), label: ex.nombre + ' (accesoria)' });
+      writes.push({ row, col: 'P', value: toSheetNumberString(ex.reps), label: ex.nombre + ' (accesoria)' });
+    } else {
+      writes.push({ row, col: 'F', value: toSheetNumberString(ex.peso), label: ex.nombre });
+      writes.push({ row, col: 'H', value: toSheetNumberString(ex.reps), label: ex.nombre });
+      const prev = findPrevValue(structure, ws, blockIndex, ex.nombre, false, entry.dia);
+      if (prev) {
+        const dPeso = parseNum(ex.peso) - parseNum(prev.peso || '0');
+        const dReps = parseNum(ex.reps) - parseNum(prev.reps || '0');
+        writes.push({ row, col: 'I', value: fmtDelta(dReps), label: ex.nombre });
+        writes.push({ row, col: 'J', value: fmtDelta(dPeso), label: ex.nombre });
+      }
+    }
+  });
+  const movGroup = findMovGroup(wb);
+  if (movGroup && entry.movilidad && entry.movilidad.length) {
+    entry.movilidad.forEach(mx => {
+      let found = null;
+      for (let r = movGroup.start; r <= movGroup.end; r++) { if (ws.getCell(r, COLS.ejercicio).text.trim() === mx.nombre.trim()) { found = r; break; } }
+      if (!found) { errors.push('No encontré el ejercicio de movilidad "' + mx.nombre + '" en la plantilla.'); return; }
+      writes.push({ row: found, col: 'B', value: dateToDDMMYYYY(entry.fecha), isDate: true, label: mx.nombre });
+      writes.push({ row: found, col: 'F', value: toSheetNumberString(mx.peso), label: mx.nombre });
+      writes.push({ row: found, col: 'H', value: toSheetNumberString(mx.reps), label: mx.nombre });
+      if (mx.fallo) writes.push({ row: found, col: 'M', value: 'S', label: mx.nombre });
+      if (mx.notas) writes.push({ row: found, col: 'N', value: mx.notas, label: mx.nombre });
+      const prev = findPrevValue(structure, ws, blockIndex, mx.nombre, true, entry.dia);
+      if (prev) {
+        const dPeso = parseNum(mx.peso) - parseNum(prev.peso || '0');
+        const dReps = parseNum(mx.reps) - parseNum(prev.reps || '0');
+        writes.push({ row: found, col: 'I', value: fmtDelta(dReps), label: mx.nombre });
+        writes.push({ row: found, col: 'J', value: fmtDelta(dPeso), label: mx.nombre });
+      }
+    });
+  }
+  return { writes, errors };
+}
+function applyWrites(ws, writes) {
+  writes.forEach(w => {
+    const colNum = Number(Object.keys(COLLETTERS).find(k => COLLETTERS[k] === w.col));
+    const cell = ws.getCell(w.row, colNum);
+    if (w.isDate) { cell.value = ddmmyyyyToOADate(w.value); cell.numFmt = cell.numFmt || 'd/m/yyyy'; }
+    else cell.value = w.value;
+  });
+}
+function duplicateHeaderRow(ws, srcHeaderRow, atRow) {
+  ws.spliceRows(atRow, 0, []);
+  const srcHeader = ws.getRow(srcHeaderRow);
+  const dstHeader = ws.getRow(atRow);
+  for (let c = 1; c <= 17; c++) {
+    const sc = srcHeader.getCell(c); const dc = dstHeader.getCell(c);
+    dc.value = sc.value;
+    if (sc.style) dc.style = JSON.parse(JSON.stringify(sc.style));
+  }
+  dstHeader.height = srcHeader.height;
+}
+function prepareNewWeek(ws, structure) {
+  const lastBlock = structure.weekBlocks[structure.weekBlocks.length - 1];
+  let templateBlock, insertAfterRow;
+  if (lastBlock.groups.length === 0) {
+    templateBlock = structure.weekBlocks[structure.weekBlocks.length - 2];
+    if (!templateBlock) throw new Error('No encontré una semana completa anterior para copiar.');
+    insertAfterRow = lastBlock.headerRow;
+  } else {
+    templateBlock = lastBlock;
+    const newHeaderRow = lastBlock.end + 1;
+    duplicateHeaderRow(ws, lastBlock.headerRow, newHeaderRow);
+    insertAfterRow = newHeaderRow;
+  }
+  const srcStart = templateBlock.start, srcEnd = templateBlock.end;
+  const n = srcEnd - srcStart + 1;
+  const insertAt = insertAfterRow + 1;
+  ws.spliceRows(insertAt, 0, ...Array.from({length:n}, () => []));
+  const clearCols = ['B','D','F','H','I','J','K','L','M','N','O','P','Q'];
+  for (let i = 0; i < n; i++) {
+    const src = ws.getRow(srcStart + i); const dst = ws.getRow(insertAt + i);
+    for (let c = 1; c <= 17; c++) {
+      const sc = src.getCell(c); const dc = dst.getCell(c);
+      dc.value = sc.value;
+      if (sc.style) dc.style = JSON.parse(JSON.stringify(sc.style));
+      if (sc.numFmt) dc.numFmt = sc.numFmt;
+    }
+    dst.height = src.height;
+  }
+  clearCols.forEach(colLetter => {
+    const colNum = Number(Object.keys(COLLETTERS).find(k => COLLETTERS[k] === colLetter));
+    for (let i = 0; i < n; i++) ws.getRow(insertAt + i).getCell(colNum).value = null;
+  });
+  const trailingHeaderRow = insertAt + n;
+  duplicateHeaderRow(ws, insertAfterRow, trailingHeaderRow);
+  return { insertAt, insertEnd: insertAt + n - 1, newHeaderRow: trailingHeaderRow };
+}
+function buildSnapshot(structure, ws) {
+  let blockIndex = structure.weekBlocks.length - 1;
+  while (blockIndex >= 0 && structure.weekBlocks[blockIndex].groups.length === 0) blockIndex--;
+  if (blockIndex < 0) return {};
+  const templateBlock = structure.weekBlocks[blockIndex];
+  const names = [];
+  templateBlock.groups.forEach(g => { for (let r = g.start; r <= g.end; r++) { const n = ws.getCell(r, COLS.ejercicio).text.trim(); if (n) names.push(n); } });
+  const snapshot = {};
+  names.forEach(nombre => {
+    for (let b = blockIndex; b >= 0; b--) {
+      const wb = structure.weekBlocks[b];
+      let found = null;
+      for (const g of wb.groups) { for (let r = g.start; r <= g.end; r++) { if (ws.getCell(r, COLS.ejercicio).text.trim() === nombre) { found = r; break; } } if (found) break; }
+      if (found) {
+        const peso = ws.getCell(found, COLS.peso).text, reps = ws.getCell(found, COLS.reps).text, notas = ws.getCell(found, COLS.notas).text;
+        if (peso || reps) { snapshot[nombre] = { peso, reps, notas }; break; }
+      }
+    }
+  });
+  return snapshot;
+}
+
+async function refreshPending() {
+  if (!pendingHandle) return;
+  pendingFiles = [];
+  for await (const entry of pendingHandle.values()) { if (entry.kind === 'file' && entry.name.endsWith('.json')) pendingFiles.push({ name: entry.name, handle: entry }); }
+  pendingFiles.sort((a, b) => a.name.localeCompare(b.name));
+  renderPending();
+}
+function renderPending() {
+  const list = document.getElementById('pendingList');
+  list.innerHTML = '';
+  if (pendingFiles.length === 0) { list.innerHTML = '<div class="msg">No hay entrenamientos pendientes en app/pending.</div>'; return; }
+  pendingFiles.forEach(pf => {
+    const div = document.createElement('div');
+    div.className = 'pending-item';
+    div.innerHTML = '<span>' + pf.name + '</span>';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.style.flex = 'none'; btn.style.padding = '8px 12px'; btn.style.fontSize = '12px';
+    btn.textContent = 'Revisar';
+    btn.onclick = () => previewPendingFile(pf);
+    div.appendChild(btn);
+    list.appendChild(div);
+  });
+}
+async function previewPendingFile(pf) {
+  try {
+    const file = await pf.handle.getFile();
+    const entry = JSON.parse(await file.text());
+    const wb = await loadWorkbookRaw();
+    const ws = wb.getWorksheet(SHEET_NAME);
+    if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); return; }
+    const structure = parseStructure(ws);
+    const { writes, errors } = computeWrites(structure, ws, entry);
+    document.getElementById('previewCard').style.display = 'block';
+    document.getElementById('previewInfo').textContent = entry.fecha + ' — Día ' + entry.dia + ' (' + entry.grupo + ')' + (entry.ayuno ? ' — ayuno' : '');
+    const tbody = document.querySelector('#previewTable tbody');
+    tbody.innerHTML = '';
+    errors.forEach(e => { const tr = document.createElement('tr'); tr.innerHTML = '<td colspan="4"><span class="rtag err">Error</span> ' + e + '</td>'; tbody.appendChild(tr); });
+    writes.forEach(w => { const tr = document.createElement('tr'); tr.innerHTML = '<td>' + w.row + '</td><td>' + w.label + '</td><td>' + w.col + '</td><td>' + w.value + '</td>'; tbody.appendChild(tr); });
+    currentApply = errors.length ? null : { entry, writes, pf, ws, wb };
+    document.getElementById('btnConfirmApply').disabled = !!errors.length;
+  } catch (e) { setRStatus('Error al leer el pendiente: ' + e.message); }
+}
+document.getElementById('btnApplyAll').addEventListener('click', async () => {
+  try {
+    const wb = await loadWorkbookRaw();
+    const ws = wb.getWorksheet(SHEET_NAME);
+    if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); return; }
+    const structure = parseStructure(ws);
+    const applied = [], skipped = [];
+    for (const pf of pendingFiles) {
+      let entry;
+      try { const file = await pf.handle.getFile(); entry = JSON.parse(await file.text()); } catch (e) { skipped.push(pf.name + ': JSON inválido'); continue; }
+      const { writes, errors } = computeWrites(structure, ws, entry);
+      if (errors.length) { skipped.push(pf.name + ': ' + errors[0]); continue; }
+      applyWrites(ws, writes);
+      applied.push(pf);
+    }
+    if (applied.length) {
+      await saveWorkbook(wb);
+      for (const pf of applied) {
+        const file = await pf.handle.getFile();
+        const text = await file.text();
+        const doneFile = await doneHandle.getFileHandle(pf.name, { create: true });
+        const writable = await doneFile.createWritable();
+        await writable.write(text);
+        await writable.close();
+        await pendingHandle.removeEntry(pf.name);
+      }
+    }
+    logP('Aplicados (' + applied.length + '): ' + applied.map(p => p.name).join(', '));
+    if (skipped.length) logP('Con error, quedaron pendientes (' + skipped.length + '):\n' + skipped.join('\n'));
+    setRStatus(applied.length + ' aplicado(s). ' + (skipped.length ? skipped.length + ' con error.' : 'Todo al día.'));
+    if (applied.length) { statsLoaded = false; await updateStatsAccess(); } else await refreshPending();
+  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR aplicar todos: ' + e.message); }
+});
+document.getElementById('btnCancelApply').addEventListener('click', () => { document.getElementById('previewCard').style.display = 'none'; currentApply = null; });
+document.getElementById('btnConfirmApply').addEventListener('click', async () => {
+  if (!currentApply) return;
+  try {
+    applyWrites(currentApply.ws, currentApply.writes);
+    await saveWorkbook(currentApply.wb);
+    const file = await currentApply.pf.handle.getFile();
+    const text = await file.text();
+    const doneFile = await doneHandle.getFileHandle(currentApply.pf.name, { create: true });
+    const writable = await doneFile.createWritable();
+    await writable.write(text);
+    await writable.close();
+    await pendingHandle.removeEntry(currentApply.pf.name);
+    logP('Aplicado: ' + currentApply.pf.name + ' (' + currentApply.writes.length + ' celdas)');
+    setRStatus('Listo. ' + currentApply.pf.name + ' aplicado.');
+    document.getElementById('previewCard').style.display = 'none';
+    currentApply = null;
+    statsLoaded = false; await updateStatsAccess();
+  } catch (e) { setRStatus('Error al aplicar: ' + e.message); logP('ERROR: ' + e.message); }
+});
+document.getElementById('btnNuevaSemana').addEventListener('click', async () => {
+  try {
+    const wb = await loadWorkbookRaw();
+    const ws = wb.getWorksheet(SHEET_NAME);
+    const structure = parseStructure(ws);
+    const result = prepareNewWeek(ws, structure);
+    await saveWorkbook(wb);
+    setRStatus('Semana nueva lista: filas ' + result.insertAt + '-' + result.insertEnd + '.');
+    logP('Nueva semana insertada: ' + JSON.stringify(result));
+    statsLoaded = false; await updateStatsAccess();
+  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR nueva semana: ' + e.message); }
+});
+document.getElementById('btnSnapshot').addEventListener('click', async () => {
+  try {
+    const wb = await loadWorkbookRaw();
+    const ws = wb.getWorksheet(SHEET_NAME);
+    const structure = parseStructure(ws);
+    const snapshot = buildSnapshot(structure, ws);
+    document.getElementById('snapshotCard').style.display = 'block';
+    document.getElementById('snapshotOut').textContent = JSON.stringify(snapshot, null, 1);
+    setRStatus('Snapshot listo (' + Object.keys(snapshot).length + ' ejercicios).');
+  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR snapshot: ' + e.message); }
+});
+document.getElementById('btnCopySnapshot').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(document.getElementById('snapshotOut').textContent); setRStatus('Copiado.'); }
+  catch (e) { setRStatus('No pude copiar solo — seleccioná el texto a mano.'); }
+});
+
 // ---------- barra de pestañas ----------
 document.querySelectorAll('.tabitem').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1725,6 +2087,11 @@ document.querySelectorAll('.tabitem').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
     window.scrollTo(0, 0);
+    if (btn.dataset.view === 'pendientes') {
+      if (!pendingHandle) { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para poder usar esta pestaña.'); return; }
+      refreshPending();
+      return;
+    }
     const isStatsView = btn.dataset.view === 'semana' || btn.dataset.view === 'progreso' || btn.dataset.view === 'constancia';
     if (!isStatsView) return;
     if (!xlsxHandle) { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para poder ver las estadísticas.'); return; }
