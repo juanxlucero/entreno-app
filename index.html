@@ -529,8 +529,11 @@ function getSelectedMachine(nombre, data) {
 function ensureGuardarVisible(card) {
   const btn = card.querySelector('.savebtn');
   const footer = document.querySelector('.footer');
+  const tabbar = document.querySelector('.tabbar');
   if (!btn || !footer) return;
-  const footerH = footer.offsetHeight;
+  // el footer ("Borrar día"/"Finalizar") flota arriba de la barra de pestañas, así
+  // que hay que descontar la altura de las DOS para saber qué queda tapado.
+  const footerH = footer.offsetHeight + (tabbar ? tabbar.offsetHeight : 0);
   const btnRect = btn.getBoundingClientRect();
   const overflow = btnRect.bottom - (window.innerHeight - footerH - 28);
   if (overflow > 0) {
