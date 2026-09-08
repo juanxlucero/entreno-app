@@ -8,6 +8,8 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
+<script src="lib/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f1115;
@@ -18,6 +20,8 @@
     --accent: #4f8cff;
     --danger: #ff5d5d;
     --ok: #35c46b;
+    --ok-soft: rgba(53,196,107,.15);
+    --warn: #e0954a;
     --border: #2a2e37;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -27,8 +31,10 @@
     font-family: -apple-system, Roboto, "Segoe UI", Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding-bottom: 100px;
+    padding-bottom: 160px;
   }
+  .view { display: none; }
+  .view.active { display: block; }
   header {
     position: sticky; top: 0; z-index: 10;
     background: var(--bg);
@@ -87,11 +93,24 @@
   .chip.ss-on { border-color: var(--accent); color: var(--accent); background: #142238; }
   .savebtn { width:100%; padding: 12px; border-radius: 10px; border:none; background: var(--accent); color:white; font-size:15px; font-weight:600; cursor:pointer; margin-top:4px; }
   .footer {
-    position: fixed; bottom:0; left:0; right:0; background: var(--bg); border-top: 1px solid var(--border);
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    position: fixed; bottom: 58px; left:0; right:0; background: var(--bg); border-top: 1px solid var(--border);
+    padding: 10px 16px;
     display:flex; gap:8px;
   }
   .btn { flex:1; padding: 14px; border-radius: 12px; border:none; font-size:15px; font-weight:700; cursor:pointer; }
+  /* ---------- barra de pestañas (navegación principal) ---------- */
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; background: var(--card); border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .tabitem {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: none; color: var(--muted); font-family: inherit;
+    font-size: 10.5px; padding: 6px 2px; cursor: pointer;
+  }
+  .tabitem .ico { font-size: 19px; }
+  .tabitem.active { color: var(--accent); }
   .btn-primary { background: var(--ok); color:#04140a; }
   .btn-secondary { background: var(--card); color: var(--text); border:1px solid var(--border); }
   .linkbtn { background:none; border:none; color: var(--accent); font-size:13px; text-decoration:underline; cursor:pointer; padding:0; }
@@ -122,10 +141,88 @@
     background:rgba(79,140,255,.08); pointer-events:none;
   }
   .fallo-inline { display:flex; align-items:center; justify-content:center; height:72px; }
+
+  /* ---------- vistas de solo lectura (Semana / Progreso / Constancia) ---------- */
+  .rview { padding: 14px 16px 4px; }
+  .rview h1 { font-size: 18px; margin: 0 0 4px; }
+  .rview .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+  .rcard {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 14px;
+  }
+  .rcard h3 { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
+  .rtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .rtable th, .rtable td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+  .rtable th { color: var(--muted); font-weight: 600; font-size: 10.5px; text-transform: uppercase; }
+  .rtable tr:last-child td { border-bottom: none; }
+  .rtag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 10px; margin-left: 5px; font-weight: 600; }
+  .rtag.ss { background: rgba(79,140,255,.16); color: var(--accent); }
+  .rtag.fallo { background: rgba(255,93,93,.16); color: var(--danger); }
+  .day-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .day-head .grupo { font-size: 14.5px; font-weight: 700; }
+  .day-head .fecha { font-size: 11.5px; color: var(--muted); }
+  .rempty { color: var(--muted); font-size: 13px; font-style: italic; }
+  .rsel {
+    background: #101217; border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 9px 10px; font-size: 14px; font-family: inherit; width: 100%; margin-bottom: 10px;
+  }
+  .rfilter-row { display: flex; gap: 8px; }
+  .rfilter-row .rsel { flex: 1; }
+  .rstat-row { display: flex; gap: 22px; align-items: baseline; margin: 4px 0 2px; flex-wrap: wrap; }
+  .rstat-big { font-size: 28px; font-weight: 800; }
+  .rstat-big small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .rstat-minmax { font-size: 12.5px; color: var(--muted); }
+  .rstat-minmax b { color: var(--text); }
+  .rchart-wrap { margin-top: 14px; height: 220px; }
+  .seg-tabs { display: flex; gap: 3px; background: #101217; border-radius: 10px; padding: 3px; width: max-content; margin-bottom: 14px; }
+  .seg-tab { border: none; background: none; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; font-family: inherit; }
+  .seg-tab.active { background: var(--card); color: var(--text); }
+  .goal-topline { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; flex-wrap: wrap; gap: 4px; }
+  .goal-topline h3 { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); margin: 0; }
+  .goal-topline .num { font-size: 18px; font-weight: 800; }
+  .streak-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+  .streak-ring {
+    width: 58px; height: 58px; border-radius: 50%; flex-shrink: 0;
+    background: conic-gradient(var(--ok) calc(var(--pct,50) * 1%), rgba(255,255,255,.08) 0);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .streak-ring-inner {
+    width: 46px; height: 46px; border-radius: 50%; background: var(--card);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; color: var(--ok);
+  }
+  .streak-label { font-size: 12.5px; color: var(--muted); }
+  .streak-label b { color: var(--text); font-size: 14px; }
+  .cal-header { display: flex; justify-content: space-between; align-items: center; margin: 16px 0 10px; max-width: 260px; }
+  .cal-header button { background: #101217; border: 1px solid var(--border); border-radius: 7px; width: 26px; height: 26px; cursor: pointer; color: var(--text); font-size: 13px; }
+  .cal-header strong { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-width: 280px; }
+  .cal-dow { text-align: center; font-size: 10px; color: var(--muted); padding-bottom: 3px; }
+  .cal-day {
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; font-size: 11px; color: var(--muted); margin: 0 auto;
+  }
+  .cal-day.empty { visibility: hidden; }
+  .cal-day.trained { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
+  .week-list { margin-top: 16px; }
+  .week-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .week-row:last-child { border-bottom: none; }
+  .pill { padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+  .pill.completa { background: var(--ok-soft); color: var(--ok); }
+  .pill.curso { background: rgba(79,140,255,.16); color: var(--accent); }
+  .pill.corte { background: rgba(255,93,93,.16); color: var(--danger); }
+  .day-popover {
+    position: fixed; z-index: 60; width: 220px; max-height: 60vh; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.5); padding: 12px 14px;
+  }
+  .day-popover[hidden] { display: none; }
+  .day-popover hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+  .rstatus { font-size: 11.5px; color: var(--muted); margin-top: 8px; text-align: center; }
 </style>
 </head>
 <body>
 
+<div class="view active" id="view-cargar">
 <header>
   <h1>🏋️ Registro de entreno</h1>
   <div class="row">
@@ -179,6 +276,78 @@
   <button class="btn btn-secondary" onclick="clearDay()">Borrar día</button>
   <button class="btn btn-primary" onclick="finalizarDia()">Finalizar y guardar</button>
 </div>
+</div><!-- /view-cargar -->
+
+<div class="view rview" id="view-semana">
+  <h1>Semana actual</h1>
+  <p class="sub">Elegí una semana para ver sus 4 días.</p>
+  <select class="rsel" id="weekSelect"></select>
+  <div class="daybtns" id="weekDayBtns"></div>
+  <div class="rcard" id="weekCard"></div>
+</div>
+
+<div class="view rview" id="view-progreso">
+  <h1>Progreso por ejercicio</h1>
+  <p class="sub">Evolución en el tiempo, agrupado por día.</p>
+  <div class="rcard">
+    <div class="rfilter-row">
+      <select class="rsel" id="exerciseSelect"></select>
+    </div>
+    <select class="rsel" id="periodSelect">
+      <option value="all">Todo el historial</option>
+      <option value="90">Últimos 3 meses</option>
+      <option id="periodYearCur" value="year-cur">Este año</option>
+      <option id="periodYearPrev" value="year-prev">Año anterior</option>
+    </select>
+    <div class="rstat-row">
+      <div class="rstat-big"><span id="statAvg">—</span><small> kg promedio</small></div>
+    </div>
+    <div class="rstat-minmax">Mín. <b id="statMin">—</b> · Máx. <b id="statMax">—</b> · Último: <b id="statLast">—</b></div>
+    <div class="rchart-wrap"><canvas id="progressChart"></canvas></div>
+  </div>
+</div>
+
+<div class="view rview" id="view-constancia">
+  <h1>Constancia</h1>
+  <p class="sub">Racha de semanas y días entrenados.</p>
+
+  <div class="rcard">
+    <div class="seg-tabs" id="goalTabs">
+      <button class="seg-tab active" data-gran="semana">Semanas</button>
+      <button class="seg-tab" data-gran="mes">Meses</button>
+      <button class="seg-tab" data-gran="año">Años</button>
+    </div>
+    <div class="goal-topline">
+      <h3>Objetivo · 4 por semana</h3>
+      <div><span class="num" id="goalStat">—</span><span style="font-size:11.5px;color:var(--muted)" id="goalLabel"> semanas</span></div>
+    </div>
+    <div class="rchart-wrap" style="height:170px"><canvas id="goalChart"></canvas></div>
+  </div>
+
+  <div class="rcard">
+    <div class="streak-hero">
+      <div class="streak-ring" id="streakRing"><div class="streak-ring-inner" id="streakNum">0</div></div>
+      <div class="streak-label">Semanas seguidas<br><b id="streakText">—</b></div>
+    </div>
+    <div class="cal-header">
+      <button id="calPrev">‹</button>
+      <strong id="calLabel"></strong>
+      <button id="calNext">›</button>
+    </div>
+    <div class="calendar-grid" id="calGrid"></div>
+    <div class="day-popover" id="dayPopover" hidden></div>
+    <div class="week-list" id="weekList"></div>
+  </div>
+</div>
+
+<div class="rstatus" id="rstatus" style="padding-bottom:70px">Elegí la carpeta Entrenamiento para ver tus estadísticas.</div>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tabitem active" data-view="cargar"><span class="ico">🏋️</span>Cargar</button>
+  <button class="tabitem" data-view="semana"><span class="ico">📅</span>Semana</button>
+  <button class="tabitem" data-view="progreso"><span class="ico">📈</span>Progreso</button>
+  <button class="tabitem" data-view="constancia"><span class="ico">🔥</span>Constancia</button>
+</nav>
 
 <div class="overlay hidden" id="configOverlay">
   <div class="sheet">
@@ -828,20 +997,32 @@ async function idbGet(key) {
   });
 }
 
-let pendingDirHandle = null;
+// desde que el celu también muestra las estadísticas (Semana/Progreso/Constancia),
+// el permiso de carpeta pasó a apuntar a la raíz "Entrenamiento" completa (antes
+// apuntaba solo a app/pending) — de ahí sale tanto pendingHandle (para guardar) como
+// xlsxHandle (para leer la planilla). rootHandle/appHandle/pendingHandle/xlsxHandle
+// son las mismas variables que usa el resto del código de estadísticas más abajo.
 let directSaveReady = false;
+
+async function onRootChosen(handle) {
+  rootHandle = handle;
+  appHandle = await rootHandle.getDirectoryHandle('app');
+  pendingHandle = await appHandle.getDirectoryHandle('pending');
+  xlsxHandle = await rootHandle.getFileHandle('ENTRENO 25.xlsx');
+  directSaveReady = true;
+}
 
 async function initDirectSave() {
   if (!('showDirectoryPicker' in window)) return;
   document.getElementById('btnSetupDirect').style.display = 'inline';
   try {
-    const handle = await idbGet('pendingDir');
+    const handle = await idbGet('root');
     if (!handle) return;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
-      pendingDirHandle = handle;
-      directSaveReady = true;
+      await onRootChosen(handle);
       document.getElementById('directSaveStatus').textContent = 'Guardado directo activado ✓';
+      updateStatsAccess();
     } else {
       document.getElementById('directSaveStatus').textContent = 'Guardado directo configurado — tocá "Configurar guardado directo" para reactivarlo.';
     }
@@ -857,26 +1038,31 @@ async function setupDirectSave() {
     alert('No se pudo elegir la carpeta: ' + e.message);
     return;
   }
-  // activar ya para esta sesión, aunque falle el guardado persistente
-  pendingDirHandle = handle;
-  directSaveReady = true;
   let persistOk = true;
   try {
-    await idbSet('pendingDir', handle);
+    await idbSet('root', handle);
   } catch(e) {
     persistOk = false;
+  }
+  try {
+    await onRootChosen(handle);
+  } catch(e) {
+    document.getElementById('directSaveStatus').textContent = 'Elegiste "' + handle.name + '" pero no encontré adentro "app/pending" o "ENTRENO 25.xlsx". Elegí la carpeta "Entrenamiento" completa (la que tiene el .xlsx adentro), no una subcarpeta.';
+    alert('Esa carpeta no tiene la estructura esperada. Elegí "Entrenamiento" completa.');
+    return;
   }
   const msg = persistOk
     ? 'Guardado directo activado ✓ (carpeta: ' + handle.name + ')'
     : 'Guardado directo activado para esta sesión (carpeta: ' + handle.name + '), pero tu navegador no pudo recordarla — vas a tener que reconfigurar la próxima vez que abras la app.';
   document.getElementById('directSaveStatus').textContent = msg;
   alert(msg);
+  updateStatsAccess();
 }
 
 async function saveDirect() {
   try {
     const name = 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json';
-    const fileHandle = await pendingDirHandle.getFileHandle(name, { create: true });
+    const fileHandle = await pendingHandle.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(lastExportJson);
     await writable.close();
@@ -1003,6 +1189,552 @@ initDirectSave();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
 }
+
+// =====================================================================
+// ESTADÍSTICAS (Semana actual / Progreso / Constancia) — mismo motor que
+// panel.html (desktop), leyendo la planilla real vía el mismo permiso de
+// carpeta que ya usa el guardado directo (ver onRootChosen más arriba).
+// =====================================================================
+const NOW_YEAR = new Date().getFullYear();
+const SHEET_NAME = String(NOW_YEAR);
+const COLS = { dia:1, fecha:2, grupo:3, orden:4, ejercicio:5, peso:6, series:7, reps:8, mrep:9, mkg:10, rm:11, ss:12, fallo:13, notas:14 };
+
+let rootHandle = null, appHandle = null, pendingHandle = null, xlsxHandle = null;
+let DATA = null;
+let statsLoaded = false, statsLoading = false;
+let prevYearAvailable = false;
+
+function setRStatus(msg) { const el = document.getElementById('rstatus'); if (el) el.textContent = msg; }
+
+// ---------- parsing (idéntico a panel.html) ----------
+function parseStructure(ws) {
+  const rowCount = ws.rowCount;
+  const headerRows = [];
+  for (let r = 1; r <= rowCount; r++) {
+    if (ws.getCell(r, COLS.dia).text === 'DÍA') headerRows.push(r);
+  }
+  const weekBlocks = [];
+  for (let i = 0; i < headerRows.length; i++) {
+    const start = headerRows[i] + 1;
+    const end = (i + 1 < headerRows.length) ? headerRows[i+1] - 1 : rowCount;
+    if (start > end) { weekBlocks.push({ headerRow: headerRows[i], start, end, groups: [] }); continue; }
+    const groups = [];
+    let gStart = start;
+    let gGrupo = ws.getCell(start, COLS.grupo).text;
+    for (let r = start + 1; r <= end + 1; r++) {
+      const grupo = (r <= end) ? ws.getCell(r, COLS.grupo).text : null;
+      if (grupo !== gGrupo) {
+        groups.push({ grupo: gGrupo, dia: ws.getCell(gStart, COLS.dia).text, start: gStart, end: r - 1 });
+        gStart = r;
+        gGrupo = grupo;
+      }
+    }
+    weekBlocks.push({ headerRow: headerRows[i], start, end, groups });
+  }
+  return { headerRows, weekBlocks, rowCount };
+}
+function isGroupBlank(ws, group) {
+  for (let r = group.start; r <= group.end; r++) {
+    if (ws.getCell(r, COLS.peso).text || ws.getCell(r, COLS.reps).text) return false;
+  }
+  return true;
+}
+function cellDateDDMMYYYY(cell) {
+  const v = cell.value;
+  if (!v) return '';
+  if (v instanceof Date) {
+    return String(v.getUTCDate()).padStart(2,'0') + '/' + String(v.getUTCMonth()+1).padStart(2,'0') + '/' + v.getUTCFullYear();
+  }
+  return cell.text;
+}
+function fechaKey(dd_mm_yyyy) {
+  if (!dd_mm_yyyy) return null;
+  const parts = dd_mm_yyyy.split('/');
+  if (parts.length !== 3) return null;
+  const [d,m,y] = parts.map(Number);
+  if (!d || !m || !y) return null;
+  return y * 10000 + m * 100 + d;
+}
+function extractAll(structure, ws) {
+  const byDia = { 1: [], 2: [], 3: [], 4: [] };
+  const exerciseHistory = {};
+  const allDates = new Set();
+  structure.weekBlocks.forEach(wb => {
+    wb.groups.forEach(g => {
+      if (g.grupo === 'MOVILIDAD') return;
+      const dia = Number(g.dia);
+      if (!dia || !byDia[dia]) return;
+      const fecha = cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha));
+      if (!fecha || fechaKey(fecha) === null) return;
+      const ejercicios = [];
+      for (let r = g.start; r <= g.end; r++) {
+        const nombre = ws.getCell(r, COLS.ejercicio).text.trim();
+        const peso = ws.getCell(r, COLS.peso).text;
+        const reps = ws.getCell(r, COLS.reps).text;
+        if (!peso && !reps) continue;
+        const ss = ws.getCell(r, COLS.ss).text;
+        const fallo = ws.getCell(r, COLS.fallo).text;
+        ejercicios.push({ nombre, peso, reps, ss, fallo });
+        if (!exerciseHistory[nombre]) exerciseHistory[nombre] = [];
+        exerciseHistory[nombre].push({ fecha, peso, reps });
+      }
+      if (ejercicios.length) { byDia[dia].push({ fecha, grupo: g.grupo, ejercicios }); allDates.add(fecha); }
+    });
+  });
+  Object.keys(exerciseHistory).forEach(n => exerciseHistory[n].sort((a, b) => fechaKey(a.fecha) - fechaKey(b.fecha)));
+  return { byDia, exerciseHistory, allDates };
+}
+function extractWeeks(structure, ws) {
+  const weeks = [];
+  structure.weekBlocks.forEach(wb => {
+    const dayGroups = wb.groups.filter(g => g.grupo !== 'MOVILIDAD');
+    if (!dayGroups.length) return;
+    const dias = {};
+    const fechas = [];
+    [1,2,3,4].forEach(d => {
+      const matchGroups = dayGroups.filter(gr => Number(gr.dia) === d);
+      if (!matchGroups.length) { dias[d] = null; return; }
+      let fecha = '', grupoLabel = '';
+      const ejercicios = [];
+      matchGroups.forEach(g => {
+        if (!grupoLabel && g.grupo) grupoLabel = g.grupo;
+        if (!fecha) { const f = cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha)); if (f) fecha = f; }
+        for (let r = g.start; r <= g.end; r++) {
+          const nombre = ws.getCell(r, COLS.ejercicio).text.trim();
+          const peso = ws.getCell(r, COLS.peso).text;
+          const reps = ws.getCell(r, COLS.reps).text;
+          if (!peso && !reps) continue;
+          ejercicios.push({ nombre, peso, reps, ss: ws.getCell(r, COLS.ss).text, fallo: ws.getCell(r, COLS.fallo).text });
+        }
+      });
+      if (fecha && fechaKey(fecha) !== null && ejercicios.length) { dias[d] = { fecha, grupo: grupoLabel, ejercicios }; fechas.push(fecha); }
+      else dias[d] = null;
+    });
+    if (!fechas.length) return;
+    fechas.sort((a, b) => fechaKey(a) - fechaKey(b));
+    const label = fechas[0] === fechas[fechas.length - 1] ? fechas[0] : (fechas[0] + ' – ' + fechas[fechas.length - 1]);
+    weeks.push({ label, sortKey: fechaKey(fechas[fechas.length - 1]), dias });
+  });
+  weeks.sort((a, b) => b.sortKey - a.sortKey);
+  return weeks;
+}
+function getCurrentTemplateByDia(structure, ws) {
+  const map = {};
+  let idx = structure.weekBlocks.length - 1;
+  while (idx >= 0 && structure.weekBlocks[idx].groups.length === 0) idx--;
+  if (idx < 0) return map;
+  structure.weekBlocks[idx].groups.forEach(g => {
+    if (g.grupo === 'MOVILIDAD') return;
+    const dia = Number(g.dia);
+    if (!dia) return;
+    for (let r = g.start; r <= g.end; r++) { const nombre = ws.getCell(r, COLS.ejercicio).text.trim(); if (nombre) map[nombre] = dia; }
+  });
+  return map;
+}
+function buildSessionByDate(weeks) {
+  const map = {};
+  weeks.forEach(w => {
+    [1, 2, 3, 4].forEach(d => {
+      const s = w.dias[d];
+      if (!s) return;
+      const key = fechaKey(s.fecha);
+      if (key === null) return;
+      if (!map[key]) map[key] = [];
+      map[key].push({ dia: d, grupo: s.grupo, fecha: s.fecha, ejercicios: s.ejercicios });
+    });
+  });
+  return map;
+}
+function extractWeekFlags(structure, ws) {
+  return structure.weekBlocks.map(wb => {
+    const dayGroups = wb.groups.filter(g => g.grupo !== 'MOVILIDAD');
+    const fechas = dayGroups.map(g => cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha))).filter(f => f && fechaKey(f) !== null);
+    fechas.sort((a, b) => fechaKey(a) - fechaKey(b));
+    const rango = fechas.length ? (fechas[0] === fechas[fechas.length - 1] ? fechas[0] : (fechas[0] + ' – ' + fechas[fechas.length - 1])) : '(sin fechas)';
+    return {
+      hasDayGroups: dayGroups.length > 0,
+      allFilled: dayGroups.length === 4 && dayGroups.every(g => !isGroupBlank(ws, g)),
+      anyFilled: dayGroups.some(g => !isGroupBlank(ws, g)),
+      rango
+    };
+  });
+}
+function computeRachaFromFlags(weekFlagsChrono) {
+  const blocks = weekFlagsChrono.filter(b => b.hasDayGroups);
+  let streak = 0;
+  const detalle = [];
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.allFilled) { streak++; detalle.push({ rango: b.rango, estado: 'completa' }); continue; }
+    if (i === blocks.length - 1 && b.anyFilled) { detalle.push({ rango: b.rango, estado: 'en curso' }); continue; }
+    detalle.push({ rango: b.rango, estado: b.anyFilled ? 'incompleta' : 'vacía' });
+    break;
+  }
+  return { streak, detalle };
+}
+function buildMonthBuckets() {
+  const dates = Array.from(DATA.allDates).map(f => { const [d, m, y] = f.split('/').map(Number); return { y, m: m - 1, d }; });
+  if (!dates.length) return [];
+  dates.sort((a, b) => (a.y * 372 + a.m * 31 + a.d) - (b.y * 372 + b.m * 31 + b.d));
+  const first = dates[0], last = dates[dates.length - 1];
+  const buckets = [];
+  let y = first.y, m = first.m;
+  while (y < last.y || (y === last.y && m <= last.m)) { buckets.push({ y, m, count: 0 }); m++; if (m > 11) { m = 0; y++; } }
+  const map = {}; buckets.forEach(b => map[b.y * 100 + b.m] = b);
+  dates.forEach(d => { const b = map[d.y * 100 + d.m]; if (b) b.count++; });
+  return buckets;
+}
+function buildYearBuckets() {
+  const years = Array.from(DATA.allDates).map(f => Number(f.split('/')[2]));
+  if (!years.length) return [];
+  const minY = Math.min(...years), maxY = Math.max(...years);
+  const buckets = [];
+  for (let y = minY; y <= maxY; y++) buckets.push({ y, count: 0 });
+  const map = {}; buckets.forEach(b => map[b.y] = b);
+  years.forEach(y => map[y].count++);
+  return buckets;
+}
+
+async function updateStatsAccess() {
+  if (!xlsxHandle || statsLoading) return;
+  setRStatus('Cargando estadísticas...');
+  await loadStats();
+}
+
+async function loadStats() {
+  statsLoading = true;
+  try {
+    const file = await xlsxHandle.getFile();
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws = wb.getWorksheet(SHEET_NAME);
+    if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); statsLoading = false; return; }
+    const structure = parseStructure(ws);
+    DATA = extractAll(structure, ws);
+    DATA.templateByDia = getCurrentTemplateByDia(structure, ws);
+
+    let weeksAll = extractWeeks(structure, ws);
+    let flagsAll = extractWeekFlags(structure, ws);
+
+    const wsPrev = wb.getWorksheet(String(NOW_YEAR - 1));
+    prevYearAvailable = !!wsPrev;
+    if (wsPrev) {
+      const structPrev = parseStructure(wsPrev);
+      const dataPrev = extractAll(structPrev, wsPrev);
+      Object.keys(dataPrev.exerciseHistory).forEach(n => {
+        if (!DATA.exerciseHistory[n]) DATA.exerciseHistory[n] = [];
+        DATA.exerciseHistory[n] = DATA.exerciseHistory[n].concat(dataPrev.exerciseHistory[n]);
+      });
+      Object.keys(DATA.exerciseHistory).forEach(n => DATA.exerciseHistory[n].sort((a, b) => fechaKey(a.fecha) - fechaKey(b.fecha)));
+      dataPrev.allDates.forEach(f => DATA.allDates.add(f));
+      weeksAll = extractWeeks(structPrev, wsPrev).concat(weeksAll);
+      flagsAll = extractWeekFlags(structPrev, wsPrev).concat(flagsAll);
+    }
+    updatePeriodOptions();
+    DATA.weeks = weeksAll.slice().sort((a, b) => b.sortKey - a.sortKey);
+    DATA.racha = computeRachaFromFlags(flagsAll);
+    DATA.sessionByDate = buildSessionByDate(DATA.weeks);
+
+    statsLoaded = true;
+    setRStatus('Actualizado: ' + new Date().toLocaleTimeString());
+    initWeekSelector();
+    renderConstancia();
+    initExerciseSelect();
+  } catch (e) {
+    setRStatus('Error al leer la planilla: ' + e.message);
+  }
+  statsLoading = false;
+}
+
+function updatePeriodOptions() {
+  document.getElementById('periodYearCur').textContent = 'Este año (' + NOW_YEAR + ')';
+  const optPrev = document.getElementById('periodYearPrev');
+  optPrev.textContent = 'Año anterior (' + (NOW_YEAR - 1) + ')';
+  optPrev.disabled = !prevYearAvailable;
+}
+
+// ---------- Semana actual (selector de semana + botones de día, como en Cargar) ----------
+let weekSelIdx = 0, weekSelDia = 1;
+function initWeekSelector() {
+  const sel = document.getElementById('weekSelect');
+  if (!DATA.weeks.length) { sel.innerHTML = ''; renderWeekCard(); return; }
+  sel.innerHTML = DATA.weeks.map((w, i) => '<option value="' + i + '">' + (i === 0 ? 'Semana actual — ' : '') + w.label + '</option>').join('');
+  sel.value = '0';
+  weekSelIdx = 0;
+  sel.onchange = () => { weekSelIdx = Number(sel.value); renderWeekCard(); };
+  renderWeekDayBtns();
+  renderWeekCard();
+}
+function renderWeekDayBtns() {
+  const el = document.getElementById('weekDayBtns');
+  el.innerHTML = '';
+  for (let d = 1; d <= 4; d++) {
+    const b = document.createElement('div');
+    b.className = 'daybtn' + (d === weekSelDia ? ' active' : '');
+    b.innerHTML = 'Día ' + d;
+    b.onclick = () => { weekSelDia = d; renderWeekDayBtns(); renderWeekCard(); };
+    el.appendChild(b);
+  }
+}
+function renderWeekCard() {
+  const card = document.getElementById('weekCard');
+  const week = DATA.weeks[weekSelIdx];
+  if (!week) { card.innerHTML = '<div class="rempty">Todavía no hay semanas con registros.</div>'; return; }
+  const s = week.dias[weekSelDia];
+  if (!s) { card.innerHTML = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + '</span></div><div class="rempty">Sin registro este día.</div>'; return; }
+  let html = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
+  html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
+  s.ejercicios.forEach(e => {
+    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '');
+    html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  card.innerHTML = html;
+}
+
+// ---------- Progreso ----------
+let chartInstance = null;
+function initExerciseSelect() {
+  const sel = document.getElementById('exerciseSelect');
+  const names = Object.keys(DATA.exerciseHistory);
+  const byDia = { 1: [], 2: [], 3: [], 4: [] };
+  const otros = [];
+  names.forEach(n => { const d = DATA.templateByDia[n]; if (d && byDia[d]) byDia[d].push(n); else otros.push(n); });
+  Object.values(byDia).forEach(arr => arr.sort((a, b) => a.localeCompare(b)));
+  otros.sort((a, b) => a.localeCompare(b));
+  let html = '';
+  for (let d = 1; d <= 4; d++) {
+    if (!byDia[d].length) continue;
+    html += '<optgroup label="Día ' + d + '">' + byDia[d].map(n => '<option value="' + n.replace(/"/g,'&quot;') + '">' + n + '</option>').join('') + '</optgroup>';
+  }
+  if (otros.length) html += '<optgroup label="Otros">' + otros.map(n => '<option value="' + n.replace(/"/g,'&quot;') + '">' + n + '</option>').join('') + '</optgroup>';
+  sel.innerHTML = html;
+  sel.onchange = () => renderChart(sel.value);
+}
+document.getElementById('periodSelect').addEventListener('change', () => {
+  const sel = document.getElementById('exerciseSelect');
+  if (sel.value) renderChart(sel.value);
+});
+function renderChart(nombre) {
+  const period = document.getElementById('periodSelect').value;
+  const raw = DATA.exerciseHistory[nombre] || [];
+  let points = raw.map(h => {
+    const parts = h.fecha.split('/').map(Number);
+    const date = new Date(Date.UTC(parts[2], parts[1] - 1, parts[0]));
+    return { date, fecha: h.fecha, peso: parseFloat(String(h.peso || '0').replace(',', '.')), reps: h.reps };
+  }).filter(p => !Number.isNaN(p.peso) && p.peso > 0);
+
+  if (period === '90') { const cutoff = Date.now() - 90 * 86400000; points = points.filter(p => p.date.getTime() >= cutoff); }
+  else if (period === 'year-cur') points = points.filter(p => p.date.getUTCFullYear() === NOW_YEAR);
+  else if (period === 'year-prev') points = points.filter(p => p.date.getUTCFullYear() === NOW_YEAR - 1);
+
+  if (!points.length) {
+    document.getElementById('statAvg').textContent = '—';
+    document.getElementById('statMin').textContent = '—';
+    document.getElementById('statMax').textContent = '—';
+    document.getElementById('statLast').textContent = '—';
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    return;
+  }
+  const vals = points.map(p => p.peso);
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  document.getElementById('statAvg').textContent = avg.toFixed(1).replace('.', ',');
+  document.getElementById('statMin').textContent = String(min).replace('.', ',');
+  document.getElementById('statMax').textContent = String(max).replace('.', ',');
+  document.getElementById('statLast').textContent = String(points[points.length - 1].peso).replace('.', ',') + ' kg';
+
+  const DAY_MS = 86400000;
+  const firstMs = points[0].date.getTime();
+  const hist = points.map(p => ({ x: Math.round((p.date.getTime() - firstMs) / DAY_MS), y: p.peso, fecha: p.fecha, reps: p.reps }));
+  const pad = Math.max(1, (max - min) * 0.15);
+  const canvas = document.getElementById('progressChart');
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  if (canvas.offsetParent === null) return; // vista oculta: se difiere (ver tabbar)
+  const ctx = canvas.getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [{
+      label: 'Peso (kg)', data: hist, borderColor: '#4f8cff', backgroundColor: 'rgba(79,140,255,.12)',
+      pointBackgroundColor: hist.map((p, i) => i === hist.length - 1 ? '#e0954a' : '#35c46b'),
+      pointRadius: 3.5, pointHoverRadius: 5.5, tension: 0.3, fill: true, borderWidth: 2
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'linear', ticks: { color: '#9aa1ab', font: {size:10}, callback: (val) => { const d = new Date(firstMs + val * DAY_MS); return String(d.getUTCDate()).padStart(2,'0') + '/' + String(d.getUTCMonth()+1).padStart(2,'0'); } }, grid: { color: '#2a2e37' } },
+        y: { suggestedMin: min - pad, suggestedMax: max + pad, ticks: { color: '#9aa1ab', font:{size:10} }, grid: { color: '#2a2e37' } }
+      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items) => hist[items[0].dataIndex].fecha, label: (ctx) => ctx.parsed.y + ' kg · ' + (hist[ctx.dataIndex].reps || '?') + ' reps' } } }
+    }
+  });
+}
+
+// ---------- Constancia ----------
+let goalChartInstance = null, goalGranularity = 'semana';
+function buildDayCardHTML(s) {
+  let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
+  html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
+  s.ejercicios.forEach(e => {
+    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '');
+    html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+document.querySelectorAll('#goalTabs .seg-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#goalTabs .seg-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    goalGranularity = btn.dataset.gran;
+    renderGoalChart();
+  });
+});
+function renderGoalChart() {
+  let labels, counts, goals, unitLabel;
+  const meses3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  if (goalGranularity === 'mes') {
+    const buckets = buildMonthBuckets();
+    counts = buckets.map(b => b.count);
+    goals = buckets.map(b => Math.round(new Date(b.y, b.m + 1, 0).getDate() / 7 * 4));
+    labels = buckets.map(b => meses3[b.m] + ' ' + String(b.y).slice(2));
+    unitLabel = 'meses';
+  } else if (goalGranularity === 'año') {
+    const buckets = buildYearBuckets();
+    counts = buckets.map(b => b.count);
+    goals = buckets.map(() => 208);
+    labels = buckets.map(b => String(b.y));
+    unitLabel = 'años';
+  } else {
+    const weeks = (DATA.weeks || []).slice().reverse();
+    counts = weeks.map(w => Object.values(w.dias).filter(Boolean).length);
+    goals = counts.map(() => 4);
+    labels = weeks.map(w => w.label.split(' – ')[0]);
+    unitLabel = 'semanas';
+  }
+  const metGoal = counts.filter((c, i) => c >= goals[i]).length;
+  document.getElementById('goalStat').textContent = counts.length ? (metGoal + ' / ' + counts.length) : '—';
+  document.getElementById('goalLabel').textContent = ' ' + unitLabel;
+
+  const canvas = document.getElementById('goalChart');
+  if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
+  if (!counts.length) return;
+  if (canvas.offsetParent === null) return; // vista oculta: se difiere (ver tabbar)
+  const ctx = canvas.getContext('2d');
+  const yMax = Math.max(...goals, ...counts) * 1.15;
+  goalChartInstance = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Entrenamientos', data: counts, backgroundColor: counts.map((c, i) => c >= goals[i] ? '#35c46b' : '#e0954a'), borderRadius: 3, maxBarThickness: 18, order: 2 },
+        { type: 'line', label: 'Objetivo', data: goals, borderColor: '#5a6070', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, order: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, max: yMax, ticks: { color: '#9aa1ab', font:{size:10} }, grid: { color: '#2a2e37' } },
+        x: { ticks: { color: '#9aa1ab', font:{size:9}, maxRotation: 0, autoSkip: true }, grid: { display: false } }
+      },
+      plugins: { legend: { display: false }, tooltip: { filter: (item) => item.datasetIndex === 0, callbacks: { label: (ctx) => ctx.parsed.y + ' entrenamiento' + (ctx.parsed.y === 1 ? '' : 's') + ' (objetivo: ' + goals[ctx.dataIndex] + ')' } } }
+    }
+  });
+}
+function renderConstancia() {
+  renderGoalChart();
+  const { streak, detalle } = DATA.racha;
+  document.getElementById('streakNum').textContent = streak;
+  document.getElementById('streakText').textContent = streak + ' semana' + (streak === 1 ? '' : 's') + ' seguida' + (streak === 1 ? '' : 's') + ' completa' + (streak === 1 ? '' : 's');
+  document.getElementById('streakRing').style.setProperty('--pct', Math.min(100, streak * 16.6));
+  const list = document.getElementById('weekList');
+  list.innerHTML = detalle.map(d => {
+    const cls = d.estado === 'completa' ? 'completa' : (d.estado === 'en curso' ? 'curso' : 'corte');
+    return '<div class="week-row"><span>' + d.rango + '</span><span class="pill ' + cls + '">' + d.estado + '</span></div>';
+  }).join('');
+  let latest = null;
+  DATA.allDates.forEach(f => { const k = fechaKey(f); if (!latest || k > latest.k) latest = { k, f }; });
+  if (latest) { const [d, m, y] = latest.f.split('/').map(Number); calYear = y; calMonth = m - 1; }
+  else { const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth(); }
+  renderCalendar();
+}
+let calYear, calMonth;
+document.getElementById('calPrev').addEventListener('click', () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); });
+document.getElementById('calNext').addEventListener('click', () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); });
+function renderCalendar() {
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  document.getElementById('calLabel').textContent = meses[calMonth] + ' ' + calYear;
+  const trainedKeys = new Set(Array.from(DATA.allDates).map(fechaKey));
+  const firstDow = (new Date(calYear, calMonth, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const grid = document.getElementById('calGrid');
+  let html = ['L','M','X','J','V','S','D'].map(d => '<div class="cal-dow">' + d + '</div>').join('');
+  for (let i = 0; i < firstDow; i++) html += '<div class="cal-day empty">·</div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = calYear * 10000 + (calMonth + 1) * 100 + day;
+    const trained = trainedKeys.has(key);
+    html += '<div class="cal-day' + (trained ? ' trained' : '') + '"' + (trained ? ' data-key="' + key + '"' : '') + '>' + day + '</div>';
+  }
+  grid.innerHTML = html;
+  hideDayPopover(true);
+  grid.querySelectorAll('.cal-day.trained').forEach(el => {
+    el.addEventListener('click', (e) => { e.stopPropagation(); togglePinPopover(el, el.dataset.key); });
+  });
+}
+let popoverPinned = false;
+function showDayPopover(el, key) {
+  const sessions = DATA.sessionByDate[key];
+  if (!sessions || !sessions.length) return;
+  const pop = document.getElementById('dayPopover');
+  pop.innerHTML = sessions.map(buildDayCardHTML).join('<hr>');
+  pop.hidden = false;
+  const rect = el.getBoundingClientRect();
+  const popW = pop.offsetWidth || 220;
+  let left = rect.right + 10;
+  if (left + popW > window.innerWidth - 10) left = rect.left - popW - 10;
+  if (left < 8) left = 8;
+  pop.style.left = left + 'px';
+  pop.style.top = '0px';
+  const popH = pop.offsetHeight;
+  let top = rect.top - popH / 2 + rect.height / 2;
+  if (top + popH > window.innerHeight - 10) top = window.innerHeight - 10 - popH;
+  if (top < 8) top = 8;
+  pop.style.top = top + 'px';
+}
+function hideDayPopover(force) {
+  if (popoverPinned && !force) return;
+  popoverPinned = false;
+  document.getElementById('dayPopover').hidden = true;
+}
+function togglePinPopover(el, key) {
+  const pop = document.getElementById('dayPopover');
+  if (popoverPinned && !pop.hidden) { hideDayPopover(true); return; }
+  showDayPopover(el, key);
+  popoverPinned = true;
+}
+document.addEventListener('click', (e) => {
+  const pop = document.getElementById('dayPopover');
+  if (!pop.hidden && !pop.contains(e.target)) hideDayPopover(true);
+});
+
+// ---------- barra de pestañas ----------
+document.querySelectorAll('.tabitem').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabitem').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    window.scrollTo(0, 0);
+    const isStatsView = btn.dataset.view === 'semana' || btn.dataset.view === 'progreso' || btn.dataset.view === 'constancia';
+    if (!isStatsView) return;
+    if (!xlsxHandle) { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para poder ver las estadísticas.'); return; }
+    if (!statsLoaded) { updateStatsAccess(); return; }
+    // Chart.js no dibuja bien un gráfico creado en un canvas oculto — al volver a
+    // una vista con gráfico hay que re-crearlo ahora que el canvas ya es visible.
+    if (btn.dataset.view === 'progreso') { const sel = document.getElementById('exerciseSelect'); if (sel.value) renderChart(sel.value); }
+    if (btn.dataset.view === 'constancia') renderGoalChart();
+  });
+});
 </script>
 </body>
 </html>
