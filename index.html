@@ -1052,6 +1052,7 @@ async function idbGet(key) {
 // xlsxHandle (para leer la planilla). rootHandle/appHandle/pendingHandle/xlsxHandle
 // son las mismas variables que usa el resto del código de estadísticas más abajo.
 let directSaveReady = false;
+let rememberedRootHandle = null;
 
 async function onRootChosen(handle) {
   rootHandle = handle;
@@ -1066,35 +1067,50 @@ async function onRootChosen(handle) {
 
 async function initDirectSave() {
   if (!('showDirectoryPicker' in window)) return;
-  document.getElementById('btnSetupDirect').style.display = 'inline';
+  const setupBtn = document.getElementById('btnSetupDirect');
+  setupBtn.style.display = 'inline';
   try {
     const handle = await idbGet('root');
     if (!handle) return;
+    rememberedRootHandle = handle;
     const perm = await handle.queryPermission({ mode: 'readwrite' });
     if (perm === 'granted') {
       await onRootChosen(handle);
       document.getElementById('directSaveStatus').textContent = 'Guardado directo activado ✓';
       updateStatsAccess();
     } else {
-      document.getElementById('directSaveStatus').textContent = 'Guardado directo configurado — tocá "Configurar guardado directo" para reactivarlo.';
+      // el permiso caducó (pasa seguido en Android cuando Chrome mata el proceso),
+      // pero la carpeta sigue recordada — alcanza con un toque liviano para reactivarla,
+      // ver setupDirectSave().
+      setupBtn.textContent = 'Reconectar carpeta "Entrenamiento"';
+      document.getElementById('directSaveStatus').textContent = 'Tocá "Reconectar carpeta" para volver a activar el guardado directo y las estadísticas (un solo toque, sin volver a buscarla).';
     }
   } catch(e) {}
 }
 
 async function setupDirectSave() {
-  let handle;
-  try {
-    handle = await window.showDirectoryPicker();
-  } catch(e) {
-    document.getElementById('directSaveStatus').textContent = 'No se pudo elegir la carpeta: ' + e.message;
-    alert('No se pudo elegir la carpeta: ' + e.message);
-    return;
+  let handle = null;
+  // primero, si ya la teníamos guardada, un simple pedido de permiso sobre esa MISMA
+  // carpeta (un popup chiquito de "Permitir", nada de elegir carpeta de nuevo).
+  if (rememberedRootHandle) {
+    try {
+      const perm = await rememberedRootHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') handle = rememberedRootHandle;
+    } catch(e) {}
+  }
+  let isNewHandle = !handle;
+  if (!handle) {
+    try {
+      handle = await window.showDirectoryPicker();
+    } catch(e) {
+      document.getElementById('directSaveStatus').textContent = 'No se pudo elegir la carpeta: ' + e.message;
+      alert('No se pudo elegir la carpeta: ' + e.message);
+      return;
+    }
   }
   let persistOk = true;
-  try {
-    await idbSet('root', handle);
-  } catch(e) {
-    persistOk = false;
+  if (isNewHandle) {
+    try { await idbSet('root', handle); rememberedRootHandle = handle; } catch(e) { persistOk = false; }
   }
   try {
     await onRootChosen(handle);
@@ -1103,6 +1119,7 @@ async function setupDirectSave() {
     alert('Esa carpeta no tiene la estructura esperada. Elegí "Entrenamiento" completa.');
     return;
   }
+  document.getElementById('btnSetupDirect').textContent = 'Reconectar carpeta "Entrenamiento"';
   const msg = persistOk
     ? 'Guardado directo activado ✓ (carpeta: ' + handle.name + ')'
     : 'Guardado directo activado para esta sesión (carpeta: ' + handle.name + '), pero tu navegador no pudo recordarla — vas a tener que reconfigurar la próxima vez que abras la app.';
