@@ -158,6 +158,7 @@
   .rtag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 10px; margin-left: 5px; font-weight: 600; }
   .rtag.ss { background: rgba(79,140,255,.16); color: var(--accent); }
   .rtag.fallo { background: rgba(255,93,93,.16); color: var(--danger); }
+  .rtag.retorno { background: rgba(167,139,250,.18); color: #a78bfa; }
   .day-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
   .day-head .grupo { font-size: 14.5px; font-weight: 700; }
   .day-head .fecha { font-size: 11.5px; color: var(--muted); }
@@ -490,7 +491,9 @@ function loadPrev() {
 }
 let PREV = loadPrev();
 
-function findLocalPrev(nombre, maquina, soloNormal) {
+// filtro: 'any' (default) | 'normal' (ignora sesiones en modo retorno) | 'retorno' (solo modo retorno)
+function findLocalPrev(nombre, maquina, filtro) {
+  filtro = filtro || 'any';
   maquina = maquina || 'principal';
   let best = null;
   for (let i = 0; i < localStorage.length; i++) {
@@ -502,9 +505,10 @@ function findLocalPrev(nombre, maquina, soloNormal) {
     const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
     if (!entry || (!entry.reps && !entry.peso)) continue;
     if ((entry.maquina || 'principal') !== maquina) continue;
-    if (soloNormal && entry.retornoAplicado) continue;
+    if (filtro === 'normal' && entry.retornoAplicado) continue;
+    if (filtro === 'retorno' && !entry.retornoAplicado) continue;
     if (!best || d.fecha > best.fecha) {
-      best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '' };
+      best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '', retornoAplicado: entry.retornoAplicado || null };
     }
   }
   return best;
@@ -745,16 +749,24 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   // en modo retorno, "antes" tiene que ser la última sesión normal (100%) —
   // si no, la semana siguiente calcularía el % sobre un peso ya reducido.
   const usarSoloNormal = !esMovilidad && !!retornoPct;
-  const prev = findLocalPrev(nombre, maquina, usarSoloNormal)
-    || (usarSoloNormal ? findLocalPrev(nombre, maquina, false) : null)
+  const prev = findLocalPrev(nombre, maquina, usarSoloNormal ? 'normal' : 'any')
+    || (usarSoloNormal ? findLocalPrev(nombre, maquina, 'any') : null)
     || (maquina === 'principal' ? PREV[nombre] : null);
+  // para mostrar en "antes" se buscan las DOS referencias por separado (100% y último
+  // retorno), sin importar en qué modo esté la tarjeta ahora mismo.
+  const prevNormal = findLocalPrev(nombre, maquina, 'normal') || (maquina === 'principal' ? PREV[nombre] : null);
+  const prevRetorno = esMovilidad ? null : findLocalPrev(nombre, maquina, 'retorno');
 
   const head = document.createElement('div');
   head.className = 'card-head';
   const orden = esMovilidad ? '' : (ordenRealDe(nombre) ? '<span class="badge">'+ordenRealDe(nombre)+'</span>' : '<span class="badge" style="background:#3a3f4a">'+(idx+1)+'</span>');
   const machTag = (!esMovilidad && maquina === 'accesoria') ? ' 🔧' : '';
   const retornoSugerido = (!esMovilidad && retornoPct && prev) ? calcRetornoPeso(prev.peso, retornoPct) : null;
-  const hint = prev ? '<div class="prev-hint">antes' + (prev.fecha ? ' (' + fechaCorta(prev.fecha) + ')' : '') + (maquina==='accesoria'?' [accesoria]':'') + ': ' + prev.reps + 'x' + prev.peso + (prev.notas ? ' · ' + prev.notas : '') + (retornoSugerido ? ' → sugerido ' + retornoPct + '%: ' + retornoSugerido : '') + '</div>' : '';
+  const accTag = maquina === 'accesoria' ? ' [accesoria]' : '';
+  let hint = '';
+  if (prevNormal) hint += '<div class="prev-hint">antes' + (prevNormal.fecha ? ' (' + fechaCorta(prevNormal.fecha) + ')' : '') + accTag + ': ' + prevNormal.reps + 'x' + prevNormal.peso + (prevNormal.notas ? ' · ' + prevNormal.notas : '') + '</div>';
+  if (prevRetorno) hint += '<div class="prev-hint">retorno ' + prevRetorno.retornoAplicado + '%' + (prevRetorno.fecha ? ' (' + fechaCorta(prevRetorno.fecha) + ')' : '') + accTag + ': ' + prevRetorno.reps + 'x' + prevRetorno.peso + '</div>';
+  if (retornoSugerido) hint += '<div class="prev-hint">→ sugerido ' + retornoPct + '%: ' + retornoSugerido + '</div>';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
   if (openCardId === card.id) card.classList.add('open');
@@ -1375,7 +1387,7 @@ function extractWeeks(structure, ws) {
           const peso = ws.getCell(r, COLS.peso).text;
           const reps = ws.getCell(r, COLS.reps).text;
           if (!peso && !reps) continue;
-          ejercicios.push({ nombre, peso, reps, ss: ws.getCell(r, COLS.ss).text, fallo: ws.getCell(r, COLS.fallo).text });
+          ejercicios.push({ nombre, peso, reps, ss: ws.getCell(r, COLS.ss).text, fallo: ws.getCell(r, COLS.fallo).text, notas: ws.getCell(r, COLS.notas).text });
         }
       });
       if (fecha && fechaKey(fecha) !== null && ejercicios.length) { dias[d] = { fecha, grupo: grupoLabel, ejercicios }; fechas.push(fecha); }
@@ -1548,6 +1560,12 @@ function renderWeekDayBtns() {
     el.appendChild(b);
   }
 }
+// "Retorno 50%" (u otro %) viaja adentro de la nota de la celda — se extrae para
+// mostrarlo como tag propio, igual que SS o Fallo.
+function parseRetornoTag(notas) {
+  const m = /retorno\s+(\d+)\s*%/i.exec(notas || '');
+  return m ? m[1] : null;
+}
 function renderWeekCard() {
   const card = document.getElementById('weekCard');
   const week = DATA.weeks[weekSelIdx];
@@ -1557,7 +1575,8 @@ function renderWeekCard() {
   let html = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
   html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
   s.ejercicios.forEach(e => {
-    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '');
+    const retornoPct = parseRetornoTag(e.notas);
+    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '');
     html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
   });
   html += '</tbody></table>';
@@ -1648,7 +1667,8 @@ function buildDayCardHTML(s) {
   let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
   html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
   s.ejercicios.forEach(e => {
-    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '');
+    const retornoPct = parseRetornoTag(e.notas);
+    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '');
     html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
   });
   html += '</tbody></table>';
