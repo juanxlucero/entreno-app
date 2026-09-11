@@ -1312,10 +1312,30 @@ function saveConfig() {
 }
 
 document.getElementById('fecha').value = todayStr();
-document.getElementById('fecha').addEventListener('change', () => switchDia(currentDia));
+// si el usuario toca el campo fecha a mano, respetamos esa elección (puede estar
+// cargando algo atrasado a propósito) — solo se recalcula sola cuando NO fue un
+// cambio manual (ver abajo, refrescarFechaSiCambioElDia).
+let fechaElegidaAMano = false;
+document.getElementById('fecha').addEventListener('change', () => { fechaElegidaAMano = true; switchDia(currentDia); });
 initDayButtons();
 switchDia(1);
 initDirectSave();
+
+// si la app quedó abierta de un día para el otro (no se cerró del todo, algo muy
+// común en el celu) el campo fecha se queda pisado en el día viejo — acá se
+// detecta cuando la pestaña vuelve a primer plano y, si nadie tocó la fecha a
+// mano todavía, se la actualiza sola al día real.
+function refrescarFechaSiCambioElDia() {
+  if (fechaElegidaAMano) return;
+  const hoy = todayStr();
+  const el = document.getElementById('fecha');
+  if (el.value !== hoy) {
+    el.value = hoy;
+    switchDia(currentDia);
+  }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refrescarFechaSiCambioElDia(); });
+window.addEventListener('focus', refrescarFechaSiCambioElDia);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
