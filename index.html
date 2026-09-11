@@ -470,6 +470,7 @@ let TEMPLATE = loadTemplate();
 let currentDia = 1;
 let draft = null; // { fecha, dia, ayuno, ejercicios:{nombre:{...}}, movilidad:{nombre:{...}}, ordenLog:[nombres en orden] }
 let lastExportJson = null;
+let lastExportName = null;
 
 function loadTemplate() {
   try {
@@ -1024,6 +1025,11 @@ function finalizarDia() {
   };
 
   lastExportJson = JSON.stringify(payload, null, 2);
+  // nombre de archivo fijado ACÁ, con la fecha/día de este registro ya cerrado — si
+  // se usara "draft" directamente en vez de esto, un cambio de día/fecha mientras la
+  // hoja de exportar sigue abierta podía guardar el archivo con otra fecha en el
+  // nombre que la que tiene adentro (pasó una vez: 09-07 en el nombre, 09-06 adentro).
+  lastExportName = 'entreno_' + payload.fecha + '_dia' + payload.dia + '.json';
   document.getElementById('jsonOut').textContent = lastExportJson;
   document.getElementById('directSaveRow').style.display = directSaveReady ? 'flex' : 'none';
   document.getElementById('exportOverlay').classList.remove('hidden');
@@ -1142,8 +1148,7 @@ async function setupDirectSave() {
 
 async function saveDirect() {
   try {
-    const name = 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json';
-    const fileHandle = await pendingHandle.getFileHandle(name, { create: true });
+    const fileHandle = await pendingHandle.getFileHandle(lastExportName, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(lastExportJson);
     await writable.close();
@@ -1159,7 +1164,7 @@ function downloadJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json';
+  a.download = lastExportName;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1168,7 +1173,7 @@ function downloadJson() {
 
 async function shareJson() {
   try {
-    const file = new File([lastExportJson], 'entreno_' + draft.fecha + '_dia' + draft.dia + '.json', {type:'application/json'});
+    const file = new File([lastExportJson], lastExportName, {type:'application/json'});
     if (navigator.canShare && navigator.canShare({files:[file]})) {
       await navigator.share({files:[file], title:'Registro de entreno'});
     } else {
