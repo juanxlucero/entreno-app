@@ -421,9 +421,18 @@
   </div>
 </div>
 
+<div class="overlay hidden" id="directOkOverlay">
+  <div class="sheet">
+    <h2>✓ Guardado en la planilla</h2>
+    <div class="msg" id="directOkMsg" style="margin-bottom:14px"></div>
+    <button class="savebtn" onclick="closeDirectOk()">Listo</button>
+  </div>
+</div>
+
 <div class="overlay hidden" id="exportOverlay">
   <div class="sheet">
-    <h2>Día guardado</h2>
+    <h2 id="exportTitle">Día guardado</h2>
+    <div class="msg" id="exportErrorsMsg" style="display:none; margin-bottom:12px"></div>
     <div class="row" style="margin-bottom:10px" id="directSaveRow">
       <button class="btn btn-primary" style="flex:1" onclick="saveDirect()">Guardar en Drive (directo)</button>
     </div>
@@ -984,7 +993,7 @@ function idealPos(nombre, list) {
   return list.indexOf(nombre) + 1;
 }
 
-function finalizarDia() {
+async function finalizarDia() {
   const fecha = document.getElementById('fecha').value || todayStr();
   const list = TEMPLATE.dias[currentDia] || [];
   syncSS();
@@ -1031,10 +1040,45 @@ function finalizarDia() {
   // hoja de exportar sigue abierta podía guardar el archivo con otra fecha en el
   // nombre que la que tiene adentro (pasó una vez: 09-07 en el nombre, 09-06 adentro).
   lastExportName = 'entreno_' + payload.fecha + '_dia' + payload.dia + '.json';
+
+  // si ya hay conexión activa a la carpeta, se intenta escribir DIRECTO a la planilla
+  // acá mismo — pending queda como respaldo, no como paso obligatorio. Si algo no
+  // cierra (semana sin preparar, orden que no coincide, etc.) cae al flujo de siempre
+  // con el error a la vista, sin perder nada.
+  if (xlsxHandle) {
+    try {
+      const wb = await loadWorkbookRaw();
+      const ws = wb.getWorksheet(SHEET_NAME);
+      if (!ws) throw new Error('No encontré la hoja "' + SHEET_NAME + '".');
+      const structure = parseStructure(ws);
+      const { writes, errors } = computeWrites(structure, ws, payload);
+      if (!errors.length) {
+        applyWrites(ws, writes);
+        await saveWorkbook(wb);
+        document.getElementById('directOkMsg').textContent = payload.fecha + ' — Día ' + payload.dia + ' (' + payload.grupo + '), ' + writes.length + ' celdas escritas.';
+        document.getElementById('directOkOverlay').classList.remove('hidden');
+        statsLoaded = false;
+        updateStatsAccess();
+        return;
+      }
+      showExportOverlay('No se pudo aplicar directo — revisá y guardá por otra vía:\n' + errors.join('\n'));
+      return;
+    } catch (e) {
+      showExportOverlay('No se pudo aplicar directo (' + e.message + ') — guardá por otra vía:');
+      return;
+    }
+  }
+  showExportOverlay(null);
+}
+function showExportOverlay(errorMsg) {
   document.getElementById('jsonOut').textContent = lastExportJson;
   document.getElementById('directSaveRow').style.display = directSaveReady ? 'flex' : 'none';
+  const errBox = document.getElementById('exportErrorsMsg');
+  if (errorMsg) { errBox.textContent = errorMsg; errBox.style.display = 'block'; }
+  else { errBox.style.display = 'none'; }
   document.getElementById('exportOverlay').classList.remove('hidden');
 }
+function closeDirectOk() { document.getElementById('directOkOverlay').classList.add('hidden'); }
 
 // ---------- guardado directo a la carpeta pending (si el navegador lo soporta) ----------
 const IDB_NAME = 'entreno-mobile-fs', IDB_STORE = 'handles';
