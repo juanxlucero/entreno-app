@@ -1520,6 +1520,7 @@ async function loadStats() {
     DATA.sessionByDate = buildSessionByDate(DATA.weeks);
 
     statsLoaded = true;
+    saveStatsCache();
     setRStatus('Actualizado: ' + new Date().toLocaleTimeString());
     initWeekSelector();
     renderConstancia();
@@ -1528,6 +1529,52 @@ async function loadStats() {
     setRStatus('Error al leer la planilla: ' + e.message);
   }
   statsLoading = false;
+}
+
+// ---------- caché local de estadísticas ----------
+// El Excel en Drive deja de ser lo primero que hay que esperar: la app arranca
+// mostrando lo último que se guardó acá (instantáneo, sin pedir carpeta), y la
+// conexión a Drive sólo sirve para refrescar esa caché en segundo plano cuando
+// el permiso ya está activo (sin pedir nada al usuario) o cuando toca "Reconectar".
+const STATS_CACHE_KEY = 'entreno_stats_cache_v1';
+function saveStatsCache() {
+  try {
+    localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      weeks: DATA.weeks,
+      exerciseHistory: DATA.exerciseHistory,
+      allDates: Array.from(DATA.allDates),
+      templateByDia: DATA.templateByDia,
+      racha: DATA.racha,
+      sessionByDate: DATA.sessionByDate,
+      prevYearAvailable
+    }));
+  } catch (e) {}
+}
+function loadStatsCacheIfAny() {
+  let c;
+  try {
+    const raw = localStorage.getItem(STATS_CACHE_KEY);
+    if (!raw) return false;
+    c = JSON.parse(raw);
+  } catch (e) { return false; }
+  DATA = {
+    exerciseHistory: c.exerciseHistory,
+    allDates: new Set(c.allDates),
+    weeks: c.weeks,
+    templateByDia: c.templateByDia,
+    racha: c.racha,
+    sessionByDate: c.sessionByDate
+  };
+  prevYearAvailable = c.prevYearAvailable;
+  statsLoaded = true;
+  updatePeriodOptions();
+  const when = new Date(c.savedAt);
+  setRStatus('Datos de tu última conexión (' + when.toLocaleDateString() + ' ' + when.toLocaleTimeString() + ') — conectate para actualizar.');
+  initWeekSelector();
+  renderConstancia();
+  initExerciseSelect();
+  return true;
 }
 
 function updatePeriodOptions() {
@@ -2134,14 +2181,21 @@ document.querySelectorAll('.tabitem').forEach(btn => {
     }
     const isStatsView = btn.dataset.view === 'semana' || btn.dataset.view === 'progreso' || btn.dataset.view === 'constancia';
     if (!isStatsView) return;
-    if (!xlsxHandle) { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para poder ver las estadísticas.'); return; }
-    if (!statsLoaded) { updateStatsAccess(); return; }
+    if (!statsLoaded) {
+      // sin caché todavía (primera vez en este celu) — ahí sí hace falta conectar.
+      if (xlsxHandle) { updateStatsAccess(); } else { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para ver tus estadísticas por primera vez.'); }
+      return;
+    }
     // Chart.js no dibuja bien un gráfico creado en un canvas oculto — al volver a
     // una vista con gráfico hay que re-crearlo ahora que el canvas ya es visible.
     if (btn.dataset.view === 'progreso') { const sel = document.getElementById('exerciseSelect'); if (sel.value) renderChart(sel.value); }
     if (btn.dataset.view === 'constancia') renderGoalChart();
   });
 });
+
+// primero lo que ya está guardado acá (instantáneo), y recién después se intenta
+// una reconexión silenciosa a Drive (sin pedir nada si el permiso sigue activo).
+loadStatsCacheIfAny();
 </script>
 </body>
 </html>
