@@ -41,7 +41,8 @@
     padding: 14px 16px 10px;
     border-bottom: 1px solid var(--border);
   }
-  h1 { font-size: 20px; margin: 0 0 8px; }
+  h1 { font-size: 20px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  .brand-mark { width: 24px; height: 24px; flex-shrink: 0; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 120px; }
   input[type=date] {
@@ -229,7 +230,7 @@
 
 <div class="view active" id="view-cargar">
 <header>
-  <h1>🏋️ Registro de entreno</h1>
+  <h1><svg class="brand-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="18" y="45" width="64" height="10" rx="5" fill="#5A8DD6"/><circle cx="22" cy="50" r="17" fill="#5A8DD6"/><circle cx="78" cy="50" r="17" fill="#4CC796"/><circle cx="22" cy="50" r="7" fill="#0f1115"/><circle cx="78" cy="50" r="7" fill="#0f1115"/></svg> Registro de entreno</h1>
   <div class="row">
     <div class="field">
       <label>Fecha</label>
