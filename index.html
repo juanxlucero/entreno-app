@@ -542,21 +542,43 @@ function fechaComparable(f) {
 // eso, se completa con el historial de la planilla ya cargado (DATA.exerciseHistory,
 // que trae la nota "Retorno X%" para poder aplicar el mismo filtro normal/retorno).
 // gana el más reciente de los dos; si hay empate de fecha, gana el local (más fresco).
+// diferencia en días entre dos fechas, aceptando 'YYYY-MM-DD' o 'DD/MM/YYYY'
+function diasEntre(fA, fB) {
+  const toUTC = (f) => {
+    if (f.indexOf('-') !== -1) { const [y,m,d] = f.split('-').map(Number); return Date.UTC(y, m - 1, d); }
+    const [d,m,y] = f.split('/').map(Number); return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toUTC(fA) - toUTC(fB)) / 86400000);
+}
 function findPrevCombined(nombre, maquina, filtro) {
-  const local = findLocalPrev(nombre, maquina, filtro);
-  let fromSheet = null;
-  if (maquina === 'principal' && typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre]) {
-    const hist = DATA.exerciseHistory[nombre];
-    for (let i = hist.length - 1; i >= 0; i--) {
-      const h = hist[i];
-      if (h.fecha === draft.fecha || fechaComparable(h.fecha) === fechaComparable(draft.fecha)) continue;
+  const hist = (maquina === 'principal' && typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre]) ? DATA.exerciseHistory[nombre] : [];
+  let local = findLocalPrev(nombre, maquina, filtro);
+
+  // "normal" acá puede ser en realidad una sesión de retorno que en ESTE celular
+  // quedó sin la marca (bug ya corregido para cargas nuevas, pero una entrada vieja
+  // guardada antes del arreglo puede seguir así) — si la planilla ya tiene, cerca en
+  // fecha, el mismo peso y reps pero SÍ marcados como retorno, es la misma sesión
+  // real mal etiquetada acá: se descarta lo local y manda la planilla.
+  if (filtro === 'normal' && local) {
+    const esRetornoDisfrazado = hist.some(h => {
       const pct = typeof parseRetornoTag === 'function' ? parseRetornoTag(h.notas) : null;
-      if (filtro === 'normal' && pct) continue;
-      if (filtro === 'retorno' && !pct) continue;
-      if (!h.peso && !h.reps) continue;
-      fromSheet = { fecha: h.fecha, reps: h.reps, peso: h.peso, notas: h.notas || '', retornoAplicado: pct };
-      break;
-    }
+      if (!pct) return false;
+      if (Math.abs(diasEntre(local.fecha, h.fecha)) > 2) return false;
+      return String(h.peso).replace(',', '.') === String(local.peso).replace(',', '.') && String(h.reps) === String(local.reps);
+    });
+    if (esRetornoDisfrazado) local = null;
+  }
+
+  let fromSheet = null;
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const h = hist[i];
+    if (h.fecha === draft.fecha || fechaComparable(h.fecha) === fechaComparable(draft.fecha)) continue;
+    const pct = typeof parseRetornoTag === 'function' ? parseRetornoTag(h.notas) : null;
+    if (filtro === 'normal' && pct) continue;
+    if (filtro === 'retorno' && !pct) continue;
+    if (!h.peso && !h.reps) continue;
+    fromSheet = { fecha: h.fecha, reps: h.reps, peso: h.peso, notas: h.notas || '', retornoAplicado: pct };
+    break;
   }
   if (!local) return fromSheet;
   if (!fromSheet) return local;
