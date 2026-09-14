@@ -457,6 +457,12 @@
 </div>
 
 <script>
+// declarado acá arriba (no más abajo, junto al resto de "estadísticas") porque
+// findPrevCombined() lo consulta desde el formulario de carga, que se renderiza
+// apenas arranca la página — si quedara declarado más abajo, referenciarlo antes
+// de esa línea tira ReferenceError (temporal dead zone de "let").
+let DATA = null;
+
 const DEFAULT_TEMPLATE = {
   grupos: {
     1: "EMPUJES",
@@ -523,6 +529,38 @@ function findLocalPrev(nombre, maquina, filtro) {
     }
   }
   return best;
+}
+// 'YYYY-MM-DD' (drafts locales) o 'DD/MM/YYYY' (planilla) -> clave comparable
+function fechaComparable(f) {
+  if (!f) return '';
+  return f.indexOf('-') !== -1
+    ? f.split('-').join('')
+    : (function(){ const [d,m,y]=f.split('/'); return y + String(m).padStart(2,'0') + String(d).padStart(2,'0'); })();
+}
+// el historial local (este celu) se pierde si se reinstala la app o se cambia de
+// teléfono — para que "antes"/el % sugerido de modo retorno no dependan solo de
+// eso, se completa con el historial de la planilla ya cargado (DATA.exerciseHistory,
+// que trae la nota "Retorno X%" para poder aplicar el mismo filtro normal/retorno).
+// gana el más reciente de los dos; si hay empate de fecha, gana el local (más fresco).
+function findPrevCombined(nombre, maquina, filtro) {
+  const local = findLocalPrev(nombre, maquina, filtro);
+  let fromSheet = null;
+  if (maquina === 'principal' && typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre]) {
+    const hist = DATA.exerciseHistory[nombre];
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i];
+      if (h.fecha === draft.fecha || fechaComparable(h.fecha) === fechaComparable(draft.fecha)) continue;
+      const pct = typeof parseRetornoTag === 'function' ? parseRetornoTag(h.notas) : null;
+      if (filtro === 'normal' && pct) continue;
+      if (filtro === 'retorno' && !pct) continue;
+      if (!h.peso && !h.reps) continue;
+      fromSheet = { fecha: h.fecha, reps: h.reps, peso: h.peso, notas: h.notas || '', retornoAplicado: pct };
+      break;
+    }
+  }
+  if (!local) return fromSheet;
+  if (!fromSheet) return local;
+  return fechaComparable(local.fecha) >= fechaComparable(fromSheet.fecha) ? local : fromSheet;
 }
 
 let machineSelection = {};
@@ -674,8 +712,12 @@ function todayStr() {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-function fechaCorta(iso) {
-  const partes = (iso || '').split('-');
+// acepta 'YYYY-MM-DD' (drafts locales) o 'DD/MM/YYYY' (viene de la planilla, ver
+// findPrevCombined) — ambos terminan mostrándose como "DD/MM".
+function fechaCorta(f) {
+  if (!f) return '';
+  if (f.indexOf('/') !== -1) { const p = f.split('/'); return p.length === 3 ? p[0] + '/' + p[1] : ''; }
+  const partes = f.split('-');
   if (partes.length !== 3) return '';
   return partes[2] + '/' + partes[1];
 }
@@ -760,13 +802,13 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   // en modo retorno, "antes" tiene que ser la última sesión normal (100%) —
   // si no, la semana siguiente calcularía el % sobre un peso ya reducido.
   const usarSoloNormal = !esMovilidad && !!retornoPct;
-  const prev = findLocalPrev(nombre, maquina, usarSoloNormal ? 'normal' : 'any')
-    || (usarSoloNormal ? findLocalPrev(nombre, maquina, 'any') : null)
+  const prev = findPrevCombined(nombre, maquina, usarSoloNormal ? 'normal' : 'any')
+    || (usarSoloNormal ? findPrevCombined(nombre, maquina, 'any') : null)
     || (maquina === 'principal' ? PREV[nombre] : null);
   // para mostrar en "antes" se buscan las DOS referencias por separado (100% y último
   // retorno), sin importar en qué modo esté la tarjeta ahora mismo.
-  const prevNormal = findLocalPrev(nombre, maquina, 'normal') || (maquina === 'principal' ? PREV[nombre] : null);
-  const prevRetorno = esMovilidad ? null : findLocalPrev(nombre, maquina, 'retorno');
+  const prevNormal = findPrevCombined(nombre, maquina, 'normal') || (maquina === 'principal' ? PREV[nombre] : null);
+  const prevRetorno = esMovilidad ? null : findPrevCombined(nombre, maquina, 'retorno');
 
   const head = document.createElement('div');
   head.className = 'card-head';
@@ -1252,6 +1294,19 @@ function calcRetornoPeso(pesoStr, pct) {
   const s = String(rounded);
   return s.includes('.') ? s.replace('.', ',') : s;
 }
+// el modo retorno es una decisión de TODO el día, no ejercicio por ejercicio — si se
+// prende/cambia el % después de guardar algún ejercicio, hay que igualar los que ya
+// estaban guardados para ese día, si no quedan mezclados (algunos marcados, otros no)
+// y el "antes"/el % sugerido de los que ya se guardaron queda mal.
+function syncRetornoEnDraft() {
+  let cambio = false;
+  Object.keys(draft.ejercicios).forEach(nombre => {
+    const e = draft.ejercicios[nombre];
+    const nuevo = retornoPct || null;
+    if (e.retornoAplicado !== nuevo) { e.retornoAplicado = nuevo; cambio = true; }
+  });
+  if (cambio) persistDraft();
+}
 function initRetornoUI() {
   const onEl = document.getElementById('retornoOn');
   const row = document.getElementById('retornoPctRow');
@@ -1263,6 +1318,7 @@ function initRetornoUI() {
       retornoPct = Number(chip.dataset.pct);
       onEl.checked = true;
       saveRetorno();
+      syncRetornoEnDraft();
       initRetornoUI();
       render();
     };
@@ -1274,6 +1330,7 @@ function initRetornoUI() {
       retornoPct = null;
     }
     saveRetorno();
+    syncRetornoEnDraft();
     initRetornoUI();
     render();
   };
@@ -1353,7 +1410,6 @@ const COLLETTERS = {1:'A',2:'B',3:'C',4:'D',5:'E',6:'F',7:'G',8:'H',9:'I',10:'J'
 
 let rootHandle = null, appHandle = null, pendingHandle = null, doneHandle = null, xlsxHandle = null;
 let pendingFiles = [], currentApply = null;
-let DATA = null;
 let statsLoaded = false, statsLoading = false;
 let prevYearAvailable = false;
 
@@ -1427,9 +1483,10 @@ function extractAll(structure, ws) {
         if (!peso && !reps) continue;
         const ss = ws.getCell(r, COLS.ss).text;
         const fallo = ws.getCell(r, COLS.fallo).text;
+        const notas = ws.getCell(r, COLS.notas).text;
         ejercicios.push({ nombre, peso, reps, ss, fallo });
         if (!exerciseHistory[nombre]) exerciseHistory[nombre] = [];
-        exerciseHistory[nombre].push({ fecha, peso, reps });
+        exerciseHistory[nombre].push({ fecha, peso, reps, notas });
       }
       if (ejercicios.length) { byDia[dia].push({ fecha, grupo: g.grupo, ejercicios }); allDates.add(fecha); }
     });
