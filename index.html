@@ -560,11 +560,23 @@ function findPrevCombined(nombre, maquina, filtro) {
   // fecha, el mismo peso y reps pero SÍ marcados como retorno, es la misma sesión
   // real mal etiquetada acá: se descarta lo local y manda la planilla.
   if (filtro === 'normal' && local) {
+    const numLocal = parseFloat(String(local.peso || '0').replace(',', '.'));
+    const repsLocal = parseInt(local.reps, 10);
     const esRetornoDisfrazado = hist.some(h => {
       const pct = typeof parseRetornoTag === 'function' ? parseRetornoTag(h.notas) : null;
       if (!pct) return false;
-      if (Math.abs(diasEntre(local.fecha, h.fecha)) > 2) return false;
-      return String(h.peso).replace(',', '.') === String(local.peso).replace(',', '.') && String(h.reps) === String(local.reps);
+      const dias = Math.abs(diasEntre(local.fecha, h.fecha));
+      const numSheet = parseFloat(String(h.peso || '0').replace(',', '.'));
+      const repsSheet = parseInt(h.reps, 10);
+      const mismoPeso = !Number.isNaN(numLocal) && !Number.isNaN(numSheet) && Math.abs(numLocal - numSheet) < 0.01;
+      const mismasReps = !Number.isNaN(repsLocal) && !Number.isNaN(repsSheet) && repsLocal === repsSheet;
+      // fechas pegadas (0-1 día): alcanza con que sea la misma máquina/ejercicio, ni
+      // hace falta que coincida peso/reps (el desfasaje de fecha conocido es de 1 día).
+      // más separadas (hasta 2 días): se pide que además coincida peso y reps, para
+      // no confundir dos sesiones distintas que casualmente cayeron cerca.
+      if (dias <= 1) return true;
+      if (dias <= 2) return mismoPeso && mismasReps;
+      return false;
     });
     if (esRetornoDisfrazado) local = null;
   }
@@ -1674,6 +1686,10 @@ async function loadStats() {
     initWeekSelector();
     renderConstancia();
     initExerciseSelect();
+    // si en ese momento se está viendo "Cargar", refresca los "antes"/sugeridos ya
+    // mismo con los datos frescos — si no, quedaban con lo que había al abrir la
+    // tarjeta hasta cambiar de día a mano.
+    if (document.getElementById('view-cargar').classList.contains('active')) render();
   } catch (e) {
     setRStatus('Error al leer la planilla: ' + e.message);
   }
@@ -1723,6 +1739,10 @@ function loadStatsCacheIfAny() {
   initWeekSelector();
   renderConstancia();
   initExerciseSelect();
+  // esto corre después del primer render de "Cargar" (que arrancó sin datos, ver
+  // el final del script) — se refresca ahora que ya hay caché para que "antes"/los
+  // sugeridos aparezcan sin tener que tocar nada.
+  if (document.getElementById('view-cargar').classList.contains('active')) render();
   return true;
 }
 
