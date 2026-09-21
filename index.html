@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
 <script src="lib/exceljs.min.js"></script>
+<script src="lib/entreno-core.js?v=20260921a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -219,6 +220,10 @@
   }
   .day-popover[hidden] { display: none; }
   .day-popover hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+  .rcard hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .queue-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .queue-item:last-child { border-bottom: none; }
+  .queue-item small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
   .rstatus { font-size: 11.5px; color: var(--muted); margin-top: 8px; text-align: center; }
   .pending-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
   .pending-item:last-child { border-bottom: none; }
@@ -241,6 +246,11 @@
 </header>
 
 <main id="main">
+  <div class="toggle-row hidden" id="colaBanner" style="border-color:var(--warn)">
+    <span id="colaTxt" style="font-size:13px"></span>
+    <button class="linkbtn" onclick="enviarColaUI()">Enviar ahora</button>
+  </div>
+
   <div class="toggle-row">
     <span>Entrenaste en ayunas</span>
     <label class="switch">
@@ -270,10 +280,21 @@
     <div id="movCards"></div>
   </div>
 
-  <div style="text-align:center; margin-top:18px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
+  <div class="toggle-row" style="margin-top:18px; gap:10px">
+    <div style="min-width:0">
+      <div style="font-weight:600">OneDrive</div>
+      <div class="msg" id="msStatus" style="margin-top:2px"></div>
+    </div>
+    <div style="display:flex; gap:8px; flex-shrink:0">
+      <button class="btn btn-secondary" id="btnMsCfg" style="flex:none; padding:9px 12px; font-size:13px" onclick="abrirConfigMs()">Ajustes</button>
+      <button class="btn btn-primary" id="btnMs" style="flex:none; padding:9px 14px; font-size:13px" onclick="msBoton()">Conectar</button>
+    </div>
+  </div>
+
+  <div style="text-align:center; margin-top:14px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap;">
     <button class="linkbtn" onclick="openConfig()">Editar lista de ejercicios</button>
     <button class="linkbtn" onclick="openImportPrev()">Importar datos (solo primera vez)</button>
-    <button class="linkbtn" id="btnSetupDirect" onclick="setupDirectSave()" style="display:none">Configurar guardado directo</button>
+    <button class="linkbtn" id="btnSetupDirect" onclick="setupDirectSave()" style="display:none">Usar una carpeta del celu (avanzado)</button>
   </div>
   <div class="msg" id="directSaveStatus" style="text-align:center; margin-top:6px"></div>
 </main>
@@ -348,7 +369,13 @@
 
 <div class="view rview" id="view-pendientes">
   <h1>Pendientes y mantenimiento</h1>
-  <p class="sub">Aplicá lo cargado y preparás la próxima semana, desde el celu.</p>
+  <p class="sub">Lo que todavía no llegó a la planilla, y las herramientas de la semana.</p>
+
+  <div class="rcard" id="colaCard">
+    <h3>Sin enviar a la planilla</h3>
+    <div id="colaList"></div>
+    <button class="btn btn-primary" id="btnEnviarCola" style="margin-top:10px" onclick="enviarColaUI()">Enviar ahora</button>
+  </div>
 
   <div class="rcard">
     <div class="row" style="flex-direction:column">
@@ -365,7 +392,7 @@
 
   <div class="rcard" id="pendingCard">
     <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <h3 style="margin:0">Pendientes</h3>
+      <h3 style="margin:0">Carpeta pending (avanzado)</h3>
     </div>
     <button class="btn btn-primary" id="btnApplyAll" style="margin-bottom:10px">Aplicar todos los que no tengan error</button>
     <div id="pendingList"></div>
@@ -387,7 +414,7 @@
   </div>
 </div>
 
-<div class="rstatus" id="rstatus" style="padding-bottom:70px">Elegí la carpeta Entrenamiento para ver tus estadísticas.</div>
+<div class="rstatus" id="rstatus" style="padding-bottom:70px">Conectá OneDrive (en Cargar) para ver tus estadísticas.</div>
 
 <nav class="tabbar" id="tabbar">
   <button class="tabitem active" data-view="cargar"><span class="ico">🏋️</span>Cargar</button>
@@ -421,26 +448,47 @@
   </div>
 </div>
 
+<div class="overlay hidden" id="msOverlay">
+  <div class="sheet">
+    <h2>Conectar con OneDrive</h2>
+    <div class="msg" style="line-height:1.55; margin-bottom:12px">
+      Para guardar directo en tu Excel, Microsoft pide registrar la app <b>una sola vez</b> (gratis, unos 5 minutos, conviene hacerlo desde la compu):<br>
+      <b>1.</b> Entrá a <b>entra.microsoft.com</b> con tu cuenta de OneDrive → <i>Aplicaciones</i> → <i>Registros de aplicaciones</i> → <i>Nuevo registro</i>.<br>
+      <b>2.</b> Nombre: <i>Entreno</i>. Tipos de cuenta: <i>cuentas de cualquier directorio y cuentas personales de Microsoft</i>.<br>
+      <b>3.</b> URI de redirección: plataforma <i>Aplicación de página única (SPA)</i> y este valor:<br>
+      <code id="msRedirectShow" style="word-break:break-all; user-select:all"></code><br>
+      <b>4.</b> Registrar, copiá el <i>Id. de aplicación (cliente)</i> y pegalo acá:
+    </div>
+    <label class="small">Id. de aplicación (cliente)</label>
+    <input type="text" id="msClientIdInput" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" autocapitalize="off" style="margin-bottom:10px">
+    <label class="small">Ruta de la planilla en OneDrive</label>
+    <input type="text" id="msPathInput" autocomplete="off" autocapitalize="off" style="margin-bottom:12px">
+    <button class="savebtn" onclick="guardarConfigMs()">Guardar y conectar</button>
+    <button class="linkbtn" id="btnMsDesconectar" style="margin-top:12px; display:none" onclick="msDesconectar()">Desconectar OneDrive</button>
+    <button class="linkbtn" style="margin-top:10px; display:block" onclick="cerrarConfigMs()">Cerrar</button>
+  </div>
+</div>
+
 <div class="overlay hidden" id="directOkOverlay">
   <div class="sheet">
     <h2>✓ Guardado en la planilla</h2>
-    <div class="msg" id="directOkMsg" style="margin-bottom:14px"></div>
+    <div class="msg" id="directOkMsg" style="margin-bottom:14px; white-space:pre-wrap"></div>
     <button class="savebtn" onclick="closeDirectOk()">Listo</button>
   </div>
 </div>
 
 <div class="overlay hidden" id="exportOverlay">
   <div class="sheet">
-    <h2 id="exportTitle">Día guardado</h2>
-    <div class="msg" id="exportErrorsMsg" style="display:none; margin-bottom:12px"></div>
+    <h2 id="exportTitle">Día guardado en el celu</h2>
+    <div class="msg" id="exportErrorsMsg" style="display:none; margin-bottom:12px; white-space:pre-wrap"></div>
     <div class="row" style="margin-bottom:10px" id="directSaveRow">
-      <button class="btn btn-primary" style="flex:1" onclick="saveDirect()">Guardar en Drive (directo)</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveDirect()">Guardar en la carpeta pending</button>
     </div>
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-secondary" style="flex:1" onclick="shareJson()">Compartir a Drive</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="shareJson()">Compartir</button>
       <button class="btn btn-secondary" style="flex:1" onclick="downloadJson()">Descargar</button>
     </div>
-    <div class="msg">Si no usás "Guardar en Drive (directo)", compartí o mové este archivo a la carpeta <b>Entrenamiento/app/pending</b> en Drive. La app de escritorio lo va a levantar de ahí.</div>
+    <div class="msg">Este entrenamiento ya quedó guardado en el celu y se envía solo a la planilla cuando OneDrive esté conectado (Cargar → OneDrive). Compartir / Descargar es solo un respaldo extra.</div>
     <pre id="jsonOut"></pre>
     <button class="linkbtn" style="margin-top:10px" onclick="closeExport()">Cerrar</button>
   </div>
@@ -1117,34 +1165,35 @@ async function finalizarDia() {
   // nombre que la que tiene adentro (pasó una vez: 09-07 en el nombre, 09-06 adentro).
   lastExportName = 'entreno_' + payload.fecha + '_dia' + payload.dia + '.json';
 
-  // si ya hay conexión activa a la carpeta, se intenta escribir DIRECTO a la planilla
-  // acá mismo — pending queda como respaldo, no como paso obligatorio. Si algo no
-  // cierra (semana sin preparar, orden que no coincide, etc.) cae al flujo de siempre
-  // con el error a la vista, sin perder nada.
-  if (xlsxHandle) {
-    try {
-      const wb = await loadWorkbookRaw();
-      const ws = wb.getWorksheet(SHEET_NAME);
-      if (!ws) throw new Error('No encontré la hoja "' + SHEET_NAME + '".');
-      const structure = parseStructure(ws);
-      const { writes, errors } = computeWrites(structure, ws, payload);
-      if (!errors.length) {
-        applyWrites(ws, writes);
-        await saveWorkbook(wb);
-        document.getElementById('directOkMsg').textContent = payload.fecha + ' — Día ' + payload.dia + ' (' + payload.grupo + '), ' + writes.length + ' celdas escritas.';
-        document.getElementById('directOkOverlay').classList.remove('hidden');
-        statsLoaded = false;
-        updateStatsAccess();
-        return;
-      }
-      showExportOverlay('No se pudo aplicar directo — revisá y guardá por otra vía:\n' + errors.join('\n'));
-      return;
-    } catch (e) {
-      showExportOverlay('No se pudo aplicar directo (' + e.message + ') — guardá por otra vía:');
-      return;
-    }
+  // 1) primero queda guardado en el celu (cola local): pase lo que pase después, no se pierde.
+  // 2) si hay planilla conectada (OneDrive o carpeta), se manda directo ahora mismo; la app
+  //    decide sola si va en la semana actual, como repetición dentro de la misma semana o si
+  //    hay que abrir una semana nueva.
+  encolar(payload, lastExportName);
+  if (!hayPlanilla()) {
+    showExportOverlay('Todavía no hay OneDrive conectado: quedó guardado en el celu y se envía solo cuando lo conectes.');
+    return;
   }
-  showExportOverlay(null);
+  const btn = document.querySelector('.footer .btn-primary');
+  const textoBtn = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const r = await enviarCola();
+    if (r.error) { showExportOverlay(r.error + '\nQuedó guardado en el celu y se reintenta solo.'); return; }
+    const propio = r.detalle.find(x => x.nombre === lastExportName);
+    if (propio && propio.ok) {
+      document.getElementById('directOkMsg').textContent = payload.fecha + ' — Día ' + payload.dia + ' (' + payload.grupo + ')'
+        + '\n' + propio.celdas + ' celdas escritas' + (propio.pasos.length ? '\n• ' + propio.pasos.join('\n• ') : '') + (propio.avisos.length ? '\n⚠ ' + propio.avisos.join('\n⚠ ') : '');
+      document.getElementById('directOkOverlay').classList.remove('hidden');
+    } else {
+      const errs = propio ? propio.errores : ['No se pudo aplicar.'];
+      showExportOverlay('No se pudo aplicar a la planilla:\n' + errs.join('\n') + '\n\nQuedó guardado en el celu (Pendientes → Sin enviar).');
+    }
+  } catch (e) {
+    showExportOverlay(mensajeError(e) + '\nQuedó guardado en el celu y se reintenta solo.');
+  } finally {
+    btn.disabled = false; btn.textContent = textoBtn;
+  }
 }
 function showExportOverlay(errorMsg) {
   document.getElementById('jsonOut').textContent = lastExportJson;
@@ -1222,7 +1271,7 @@ async function initDirectSave() {
       // pero la carpeta sigue recordada — alcanza con un toque liviano para reactivarla,
       // ver setupDirectSave().
       setupBtn.textContent = 'Reconectar carpeta "Entrenamiento"';
-      document.getElementById('directSaveStatus').textContent = 'Tocá "Reconectar carpeta" para volver a activar el guardado directo y las estadísticas (un solo toque, sin volver a buscarla).';
+      if (!msConfigurado()) document.getElementById('directSaveStatus').textContent = 'Tocá "Reconectar carpeta" para volver a activar el guardado directo y las estadísticas (un solo toque, sin volver a buscarla).';
     }
   } catch(e) {}
 }
@@ -1439,8 +1488,6 @@ if ('serviceWorker' in navigator) {
 // =====================================================================
 const NOW_YEAR = new Date().getFullYear();
 const SHEET_NAME = String(NOW_YEAR);
-const COLS = { dia:1, fecha:2, grupo:3, orden:4, ejercicio:5, peso:6, series:7, reps:8, mrep:9, mkg:10, rm:11, ss:12, fallo:13, notas:14, polea1:15, polea2:16, ayuno:17 };
-const COLLETTERS = {1:'A',2:'B',3:'C',4:'D',5:'E',6:'F',7:'G',8:'H',9:'I',10:'J',11:'K',12:'L',13:'M',14:'N',15:'O',16:'P',17:'Q'};
 
 let rootHandle = null, appHandle = null, pendingHandle = null, doneHandle = null, xlsxHandle = null;
 let pendingFiles = [], currentApply = null;
@@ -1449,173 +1496,6 @@ let prevYearAvailable = false;
 
 function setRStatus(msg) { const el = document.getElementById('rstatus'); if (el) el.textContent = msg; }
 
-// ---------- parsing (idéntico a panel.html) ----------
-function parseStructure(ws) {
-  const rowCount = ws.rowCount;
-  const headerRows = [];
-  for (let r = 1; r <= rowCount; r++) {
-    if (ws.getCell(r, COLS.dia).text === 'DÍA') headerRows.push(r);
-  }
-  const weekBlocks = [];
-  for (let i = 0; i < headerRows.length; i++) {
-    const start = headerRows[i] + 1;
-    const end = (i + 1 < headerRows.length) ? headerRows[i+1] - 1 : rowCount;
-    if (start > end) { weekBlocks.push({ headerRow: headerRows[i], start, end, groups: [] }); continue; }
-    const groups = [];
-    let gStart = start;
-    let gGrupo = ws.getCell(start, COLS.grupo).text;
-    for (let r = start + 1; r <= end + 1; r++) {
-      const grupo = (r <= end) ? ws.getCell(r, COLS.grupo).text : null;
-      if (grupo !== gGrupo) {
-        groups.push({ grupo: gGrupo, dia: ws.getCell(gStart, COLS.dia).text, start: gStart, end: r - 1 });
-        gStart = r;
-        gGrupo = grupo;
-      }
-    }
-    weekBlocks.push({ headerRow: headerRows[i], start, end, groups });
-  }
-  return { headerRows, weekBlocks, rowCount };
-}
-function isGroupBlank(ws, group) {
-  for (let r = group.start; r <= group.end; r++) {
-    if (ws.getCell(r, COLS.peso).text || ws.getCell(r, COLS.reps).text) return false;
-  }
-  return true;
-}
-function cellDateDDMMYYYY(cell) {
-  const v = cell.value;
-  if (!v) return '';
-  if (v instanceof Date) {
-    return String(v.getUTCDate()).padStart(2,'0') + '/' + String(v.getUTCMonth()+1).padStart(2,'0') + '/' + v.getUTCFullYear();
-  }
-  return cell.text;
-}
-function fechaKey(dd_mm_yyyy) {
-  if (!dd_mm_yyyy) return null;
-  const parts = dd_mm_yyyy.split('/');
-  if (parts.length !== 3) return null;
-  const [d,m,y] = parts.map(Number);
-  if (!d || !m || !y) return null;
-  return y * 10000 + m * 100 + d;
-}
-function extractAll(structure, ws) {
-  const byDia = { 1: [], 2: [], 3: [], 4: [] };
-  const exerciseHistory = {};
-  const allDates = new Set();
-  structure.weekBlocks.forEach(wb => {
-    wb.groups.forEach(g => {
-      if (g.grupo === 'MOVILIDAD') return;
-      const dia = Number(g.dia);
-      if (!dia || !byDia[dia]) return;
-      const fecha = cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha));
-      if (!fecha || fechaKey(fecha) === null) return;
-      const ejercicios = [];
-      for (let r = g.start; r <= g.end; r++) {
-        const nombre = ws.getCell(r, COLS.ejercicio).text.trim();
-        const peso = ws.getCell(r, COLS.peso).text;
-        const reps = ws.getCell(r, COLS.reps).text;
-        if (!peso && !reps) continue;
-        const ss = ws.getCell(r, COLS.ss).text;
-        const fallo = ws.getCell(r, COLS.fallo).text;
-        const notas = ws.getCell(r, COLS.notas).text;
-        ejercicios.push({ nombre, peso, reps, ss, fallo });
-        if (!exerciseHistory[nombre]) exerciseHistory[nombre] = [];
-        exerciseHistory[nombre].push({ fecha, peso, reps, notas });
-      }
-      if (ejercicios.length) { byDia[dia].push({ fecha, grupo: g.grupo, ejercicios }); allDates.add(fecha); }
-    });
-  });
-  Object.keys(exerciseHistory).forEach(n => exerciseHistory[n].sort((a, b) => fechaKey(a.fecha) - fechaKey(b.fecha)));
-  return { byDia, exerciseHistory, allDates };
-}
-function extractWeeks(structure, ws) {
-  const weeks = [];
-  structure.weekBlocks.forEach(wb => {
-    const dayGroups = wb.groups.filter(g => g.grupo !== 'MOVILIDAD');
-    if (!dayGroups.length) return;
-    const dias = {};
-    const fechas = [];
-    [1,2,3,4].forEach(d => {
-      const matchGroups = dayGroups.filter(gr => Number(gr.dia) === d);
-      if (!matchGroups.length) { dias[d] = null; return; }
-      let fecha = '', grupoLabel = '';
-      const ejercicios = [];
-      matchGroups.forEach(g => {
-        if (!grupoLabel && g.grupo) grupoLabel = g.grupo;
-        if (!fecha) { const f = cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha)); if (f) fecha = f; }
-        for (let r = g.start; r <= g.end; r++) {
-          const nombre = ws.getCell(r, COLS.ejercicio).text.trim();
-          const peso = ws.getCell(r, COLS.peso).text;
-          const reps = ws.getCell(r, COLS.reps).text;
-          if (!peso && !reps) continue;
-          ejercicios.push({ nombre, peso, reps, ss: ws.getCell(r, COLS.ss).text, fallo: ws.getCell(r, COLS.fallo).text, notas: ws.getCell(r, COLS.notas).text });
-        }
-      });
-      if (fecha && fechaKey(fecha) !== null && ejercicios.length) { dias[d] = { fecha, grupo: grupoLabel, ejercicios }; fechas.push(fecha); }
-      else dias[d] = null;
-    });
-    if (!fechas.length) return;
-    fechas.sort((a, b) => fechaKey(a) - fechaKey(b));
-    const label = fechas[0] === fechas[fechas.length - 1] ? fechas[0] : (fechas[0] + ' – ' + fechas[fechas.length - 1]);
-    weeks.push({ label, sortKey: fechaKey(fechas[fechas.length - 1]), dias });
-  });
-  weeks.sort((a, b) => b.sortKey - a.sortKey);
-  return weeks;
-}
-function getCurrentTemplateByDia(structure, ws) {
-  const map = {};
-  let idx = structure.weekBlocks.length - 1;
-  while (idx >= 0 && structure.weekBlocks[idx].groups.length === 0) idx--;
-  if (idx < 0) return map;
-  structure.weekBlocks[idx].groups.forEach(g => {
-    if (g.grupo === 'MOVILIDAD') return;
-    const dia = Number(g.dia);
-    if (!dia) return;
-    for (let r = g.start; r <= g.end; r++) { const nombre = ws.getCell(r, COLS.ejercicio).text.trim(); if (nombre) map[nombre] = dia; }
-  });
-  return map;
-}
-function buildSessionByDate(weeks) {
-  const map = {};
-  weeks.forEach(w => {
-    [1, 2, 3, 4].forEach(d => {
-      const s = w.dias[d];
-      if (!s) return;
-      const key = fechaKey(s.fecha);
-      if (key === null) return;
-      if (!map[key]) map[key] = [];
-      map[key].push({ dia: d, grupo: s.grupo, fecha: s.fecha, ejercicios: s.ejercicios });
-    });
-  });
-  return map;
-}
-function extractWeekFlags(structure, ws) {
-  return structure.weekBlocks.map(wb => {
-    const dayGroups = wb.groups.filter(g => g.grupo !== 'MOVILIDAD');
-    const fechas = dayGroups.map(g => cellDateDDMMYYYY(ws.getCell(g.start, COLS.fecha))).filter(f => f && fechaKey(f) !== null);
-    fechas.sort((a, b) => fechaKey(a) - fechaKey(b));
-    const rango = fechas.length ? (fechas[0] === fechas[fechas.length - 1] ? fechas[0] : (fechas[0] + ' – ' + fechas[fechas.length - 1])) : '(sin fechas)';
-    return {
-      hasDayGroups: dayGroups.length > 0,
-      allFilled: dayGroups.length === 4 && dayGroups.every(g => !isGroupBlank(ws, g)),
-      anyFilled: dayGroups.some(g => !isGroupBlank(ws, g)),
-      rango
-    };
-  });
-}
-function computeRachaFromFlags(weekFlagsChrono) {
-  const blocks = weekFlagsChrono.filter(b => b.hasDayGroups);
-  let streak = 0;
-  const detalle = [];
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const b = blocks[i];
-    if (b.allFilled) { streak++; detalle.push({ rango: b.rango, estado: 'completa' }); continue; }
-    if (i === blocks.length - 1 && b.anyFilled) { detalle.push({ rango: b.rango, estado: 'en curso' }); continue; }
-    detalle.push({ rango: b.rango, estado: b.anyFilled ? 'incompleta' : 'vacía' });
-    break;
-  }
-  return { streak, detalle };
-}
 function buildMonthBuckets() {
   const dates = Array.from(DATA.allDates).map(f => { const [d, m, y] = f.split('/').map(Number); return { y, m: m - 1, d }; });
   if (!dates.length) return [];
@@ -1640,18 +1520,17 @@ function buildYearBuckets() {
 }
 
 async function updateStatsAccess() {
-  if (!xlsxHandle || statsLoading) return;
+  if (!hayPlanilla() || statsLoading) return;
   setRStatus('Cargando estadísticas...');
   await loadStats();
 }
 
-async function loadStats() {
+// carga las estadísticas desde la planilla (o desde un workbook que ya está en memoria, por
+// ejemplo el que se acaba de guardar, para no volver a descargarlo)
+async function loadStats(wbEnMemoria) {
   statsLoading = true;
   try {
-    const file = await xlsxHandle.getFile();
-    const buf = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    const wb = wbEnMemoria || await loadWorkbookRaw();
     const ws = wb.getWorksheet(SHEET_NAME);
     if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); statsLoading = false; return; }
     const structure = parseStructure(ws);
@@ -1691,17 +1570,18 @@ async function loadStats() {
     // tarjeta hasta cambiar de día a mano.
     if (document.getElementById('view-cargar').classList.contains('active')) render();
   } catch (e) {
-    setRStatus('Error al leer la planilla: ' + e.message);
+    setRStatus('Error al leer la planilla: ' + mensajeError(e));
   }
   statsLoading = false;
 }
 
 // ---------- caché local de estadísticas ----------
-// El Excel en Drive deja de ser lo primero que hay que esperar: la app arranca
-// mostrando lo último que se guardó acá (instantáneo, sin pedir carpeta), y la
-// conexión a Drive sólo sirve para refrescar esa caché en segundo plano cuando
-// el permiso ya está activo (sin pedir nada al usuario) o cuando toca "Reconectar".
-const STATS_CACHE_KEY = 'entreno_stats_cache_v1';
+// La planilla no es lo primero que hay que esperar: la app arranca mostrando lo último
+// que se guardó acá (instantáneo) y la conexión a OneDrive solo sirve para refrescar esa
+// caché en segundo plano.
+// v2: las semanas ahora traen sesiones repetidas (formato distinto a v1, por eso otra clave).
+const STATS_CACHE_KEY = 'entreno_stats_cache_v2';
+try { localStorage.removeItem('entreno_stats_cache_v1'); } catch (e) {}
 function saveStatsCache() {
   try {
     localStorage.setItem(STATS_CACHE_KEY, JSON.stringify({
@@ -1761,42 +1641,31 @@ function initWeekSelector() {
   sel.innerHTML = DATA.weeks.map((w, i) => '<option value="' + i + '">' + (i === 0 ? 'Semana actual — ' : '') + w.label + '</option>').join('');
   sel.value = '0';
   weekSelIdx = 0;
-  sel.onchange = () => { weekSelIdx = Number(sel.value); renderWeekCard(); };
+  sel.onchange = () => { weekSelIdx = Number(sel.value); renderWeekDayBtns(); renderWeekCard(); };
   renderWeekDayBtns();
   renderWeekCard();
 }
 function renderWeekDayBtns() {
   const el = document.getElementById('weekDayBtns');
   el.innerHTML = '';
+  const week = DATA.weeks[weekSelIdx];
   for (let d = 1; d <= 4; d++) {
+    const veces = week ? week.dias[d].length : 0;
     const b = document.createElement('div');
     b.className = 'daybtn' + (d === weekSelDia ? ' active' : '');
-    b.innerHTML = 'Día ' + d;
+    b.innerHTML = 'Día ' + d + (veces > 1 ? '<small>×' + veces + ' en la semana</small>' : '');
     b.onclick = () => { weekSelDia = d; renderWeekDayBtns(); renderWeekCard(); };
     el.appendChild(b);
   }
-}
-// "Retorno 50%" (u otro %) viaja adentro de la nota de la celda — se extrae para
-// mostrarlo como tag propio, igual que SS o Fallo.
-function parseRetornoTag(notas) {
-  const m = /retorno\s+(\d+)\s*%/i.exec(notas || '');
-  return m ? m[1] : null;
 }
 function renderWeekCard() {
   const card = document.getElementById('weekCard');
   const week = DATA.weeks[weekSelIdx];
   if (!week) { card.innerHTML = '<div class="rempty">Todavía no hay semanas con registros.</div>'; return; }
-  const s = week.dias[weekSelDia];
-  if (!s) { card.innerHTML = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + '</span></div><div class="rempty">Sin registro este día.</div>'; return; }
-  let html = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
-  html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-  s.ejercicios.forEach(e => {
-    const retornoPct = parseRetornoTag(e.notas);
-    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '');
-    html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
-  });
-  html += '</tbody></table>';
-  card.innerHTML = html;
+  const sesiones = week.dias[weekSelDia] || [];
+  if (!sesiones.length) { card.innerHTML = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + '</span></div><div class="rempty">Sin registro este día.</div>'; return; }
+  // si el día se repitió dentro de la semana, se ven todas las veces una debajo de otra
+  card.innerHTML = sesiones.map(buildDayCardHTML).join('<hr>');
 }
 
 // ---------- Progreso ----------
@@ -1880,7 +1749,8 @@ function renderChart(nombre) {
 // ---------- Constancia ----------
 let goalChartInstance = null, goalGranularity = 'semana';
 function buildDayCardHTML(s) {
-  let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + '</span><span class="fecha">' + s.fecha + '</span></div>';
+  const rep = s.extra ? '<span class="rtag ss">Repetición</span>' : '';
+  let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + rep + '</span><span class="fecha">' + s.fecha + '</span></div>';
   html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
   s.ejercicios.forEach(e => {
     const retornoPct = parseRetornoTag(e.notas);
@@ -1915,7 +1785,7 @@ function renderGoalChart() {
     unitLabel = 'años';
   } else {
     const weeks = (DATA.weeks || []).slice().reverse();
-    counts = weeks.map(w => Object.values(w.dias).filter(Boolean).length);
+    counts = weeks.map(w => w.sesiones.length); // sesiones reales de la semana (incluye repeticiones)
     goals = counts.map(() => 4);
     labels = weeks.map(w => w.label.split(' – ')[0]);
     unitLabel = 'semanas';
@@ -2024,191 +1894,301 @@ document.addEventListener('click', (e) => {
   if (!pop.hidden && !pop.contains(e.target)) hideDayPopover(true);
 });
 
-// ---------- Pendientes y mantenimiento (mismo motor que desktop.html/panel.html) ----------
+// ---------- Planilla en OneDrive (Microsoft Graph) ----------
+// El celu lee y escribe ENTRENO 25.xlsx directo en OneDrive: se descarga, se modifica con
+// ExcelJS (el mismo código que usa el panel) y se sube de nuevo. Inicio de sesión: OAuth con
+// PKCE (sin secretos), la sesión queda guardada en este celu.
+const MS_AUTH = 'https://login.microsoftonline.com/common/oauth2/v2.0/';
+const MS_SCOPES = 'Files.ReadWrite offline_access';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const MS_RUTA_DEFAULT = '01 Personal/Entrenamiento/ENTRENO 25.xlsx';
+
+function msClientId() { return (localStorage.getItem('entreno_ms_client_id') || '').trim(); }
+function msRuta() { return (localStorage.getItem('entreno_ms_path') || MS_RUTA_DEFAULT).trim().replace(/^\/+|\/+$/g, ''); }
+function msRedirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function msConfigurado() { return !!msClientId(); }
+function msTokens() { try { return JSON.parse(localStorage.getItem('entreno_ms_tokens')); } catch (e) { return null; } }
+function msTieneSesion() { const t = msTokens(); return !!(t && (t.refresh || t.access)); }
+function errAuth(msg) { const e = new Error(msg); e.code = 'auth'; return e; }
+function b64url(bytes) {
+  let s = '';
+  bytes.forEach(b => { s += String.fromCharCode(b); });
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function mensajeError(e) {
+  if (e && e.code === 'auth') return 'La sesión de OneDrive no está activa. Tocá "Iniciar sesión" en Cargar → OneDrive.';
+  if (e && e.code === 'sin-conexion') return e.message;
+  if (e instanceof TypeError || (e && e.name === 'AbortError')) return 'No hay conexión con OneDrive (¿sin internet?).';
+  return (e && e.message) || String(e);
+}
+
+async function msLogin() {
+  if (!msConfigurado()) { abrirConfigMs(); return; }
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+  const challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+  const state = b64url(crypto.getRandomValues(new Uint8Array(12)));
+  localStorage.setItem('entreno_ms_pkce', JSON.stringify({ verifier, state, redirect: msRedirectUri() }));
+  location.href = MS_AUTH + 'authorize?' + new URLSearchParams({
+    client_id: msClientId(), response_type: 'code', redirect_uri: msRedirectUri(), response_mode: 'query',
+    scope: MS_SCOPES, state, code_challenge: challenge, code_challenge_method: 'S256'
+  });
+}
+async function msTokenRequest(params) {
+  const r = await fetch(MS_AUTH + 'token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params) });
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok || !j.access_token) {
+    // refresh vencido o revocado: se limpia la sesión para que se vea "Iniciar sesión"
+    if (j.error === 'invalid_grant' || j.error === 'interaction_required') localStorage.removeItem('entreno_ms_tokens');
+    throw errAuth(j.error_description || j.error || 'No se pudo iniciar sesión en Microsoft.');
+  }
+  const previo = msTokens() || {};
+  const t = { access: j.access_token, refresh: j.refresh_token || previo.refresh, exp: Date.now() + Math.max(60, (j.expires_in || 3600) - 120) * 1000 };
+  localStorage.setItem('entreno_ms_tokens', JSON.stringify(t));
+  return t;
+}
+async function msAccessToken(forzar) {
+  const t = msTokens();
+  if (!t) throw errAuth('Sin sesión de OneDrive');
+  if (!forzar && t.access && Date.now() < t.exp) return t.access;
+  if (!t.refresh) throw errAuth('La sesión de OneDrive venció');
+  const nuevo = await msTokenRequest({ client_id: msClientId(), grant_type: 'refresh_token', refresh_token: t.refresh, scope: MS_SCOPES });
+  return nuevo.access;
+}
+// al volver del inicio de sesión de Microsoft la página trae ?code=... (o ?error=...)
+async function msProcesarRetorno() {
+  const p = new URLSearchParams(location.search);
+  if (!p.has('code') && !p.has('error')) return false;
+  const guardado = (function () { try { return JSON.parse(localStorage.getItem('entreno_ms_pkce')); } catch (e) { return null; } })();
+  history.replaceState(null, '', location.pathname);
+  if (p.has('error')) throw new Error('Microsoft respondió: ' + (p.get('error_description') || p.get('error')));
+  if (!guardado || guardado.state !== p.get('state')) throw new Error('El inicio de sesión no coincide con el pedido original. Probá de nuevo.');
+  await msTokenRequest({ client_id: msClientId(), grant_type: 'authorization_code', code: p.get('code'), redirect_uri: guardado.redirect, code_verifier: guardado.verifier, scope: MS_SCOPES });
+  localStorage.removeItem('entreno_ms_pkce');
+  return true;
+}
+function msDesconectar() {
+  localStorage.removeItem('entreno_ms_tokens');
+  cerrarConfigMs();
+  actualizarUIms();
+}
+
+async function graphFetch(url, opts) {
+  opts = opts || {};
+  for (let intento = 0; intento < 2; intento++) {
+    const token = await msAccessToken(intento === 1);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 60000);
+    try {
+      const r = await fetch(url, Object.assign({}, opts, { signal: ctl.signal, headers: Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {}) }));
+      if (r.status === 401 && intento === 0) continue;
+      return r;
+    } finally { clearTimeout(timer); }
+  }
+}
+function graphUrlRuta() { return GRAPH + '/me/drive/root:/' + msRuta().split('/').map(encodeURIComponent).join('/'); }
+async function graphMeta() {
+  const r = await graphFetch(graphUrlRuta() + '?select=id,eTag,size,name,@microsoft.graph.downloadUrl');
+  if (r.status === 404) throw new Error('No encontré "' + msRuta() + '" en tu OneDrive. Revisá la ruta en Ajustes.');
+  if (!r.ok) throw new Error('OneDrive respondió ' + r.status + ' al buscar la planilla.');
+  return r.json();
+}
+async function graphLeerPlanilla() {
+  const meta = await graphMeta();
+  let buf = null;
+  const dl = meta['@microsoft.graph.downloadUrl'];
+  if (dl) { try { const rd = await fetch(dl); if (rd.ok) buf = await rd.arrayBuffer(); } catch (e) {} }
+  if (!buf) {
+    const rc = await graphFetch(GRAPH + '/me/drive/items/' + meta.id + '/content');
+    if (!rc.ok) throw new Error('No pude descargar la planilla (OneDrive respondió ' + rc.status + ').');
+    buf = await rc.arrayBuffer();
+  }
+  return { buf, id: meta.id, etag: meta.eTag };
+}
+async function graphEscribirPlanilla(buf, id, etag) {
+  // control de cambios: si la planilla se modificó en otro lado desde que se descargó, no se pisa
+  const ahora = await graphMeta();
+  if (etag && ahora.eTag !== etag) { const e = new Error('La planilla cambió mientras se guardaba.'); e.code = 'conflicto'; throw e; }
+  const r = await graphFetch(GRAPH + '/me/drive/items/' + id + '/content', {
+    method: 'PUT', headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }, body: buf
+  });
+  if (!r.ok) throw new Error('OneDrive respondió ' + r.status + ' al guardar la planilla.');
+}
+
+// ---------- dónde está la planilla: OneDrive (principal) o una carpeta del celu (avanzado) ----------
+function backendActual() {
+  if (msConfigurado() && msTieneSesion()) return 'onedrive';
+  if (xlsxHandle) return 'carpeta';
+  return null;
+}
+function hayPlanilla() { return !!backendActual(); }
+
 async function loadWorkbookRaw() {
-  const file = await xlsxHandle.getFile();
-  const buf = await file.arrayBuffer();
+  const b = backendActual();
+  let buf, origen = { backend: b };
+  if (b === 'onedrive') { const r = await graphLeerPlanilla(); buf = r.buf; origen.id = r.id; origen.etag = r.etag; }
+  else if (b === 'carpeta') { buf = await (await xlsxHandle.getFile()).arrayBuffer(); }
+  else { const e = new Error('Conectá OneDrive para leer la planilla (Cargar → OneDrive).'); e.code = 'sin-conexion'; throw e; }
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf);
+  wb.__origen = origen;
   return wb;
 }
 async function saveWorkbook(wb) {
   const buf = await wb.xlsx.writeBuffer();
+  const o = wb.__origen || {};
+  if (o.backend === 'onedrive') { await graphEscribirPlanilla(buf, o.id, o.etag); return; }
+  if (!xlsxHandle) throw new Error('No hay planilla conectada para guardar.');
   const writable = await xlsxHandle.createWritable();
   await writable.write(buf);
   await writable.close();
 }
+// lee la planilla, deja que "mutar" la modifique y la guarda; si alguien la cambió en el medio, reintenta
+async function editarPlanilla(mutar) {
+  let ultimo;
+  for (let intento = 0; intento < 3; intento++) {
+    const wb = await loadWorkbookRaw();
+    const ws = wb.getWorksheet(SHEET_NAME);
+    if (!ws) throw new Error('No encontré la hoja "' + SHEET_NAME + '" en la planilla.');
+    const r = await mutar(wb, ws);
+    if (!r || !r.guardar) return Object.assign({ guardado: false, wb }, r || {});
+    try { await saveWorkbook(wb); return Object.assign({ guardado: true, wb }, r); }
+    catch (e) { if (e.code === 'conflicto' && intento < 2) { ultimo = e; continue; } throw e; }
+  }
+  throw ultimo;
+}
+
+// ---------- cola de envío: lo cargado queda primero en el celu y se manda a la planilla ----------
+const COLA_KEY = 'entreno_cola_v1';
+function leerCola() { try { return JSON.parse(localStorage.getItem(COLA_KEY)) || []; } catch (e) { return []; } }
+function escribirCola(c) { localStorage.setItem(COLA_KEY, JSON.stringify(c)); actualizarBadgeCola(); }
+function encolar(payload, nombre) {
+  const c = leerCola().filter(x => x.nombre !== nombre);   // rehacer el mismo día/fecha reemplaza el anterior
+  c.push({ nombre, payload, ts: Date.now(), motivo: '' });
+  escribirCola(c);
+}
+let enviandoCola = false;
+async function enviarCola() {
+  if (enviandoCola) return { enviados: 0, detalle: [], error: 'Ya se está enviando, esperá un momento.' };
+  const cola = leerCola();
+  if (!cola.length) return { enviados: 0, detalle: [] };
+  if (!hayPlanilla()) return { enviados: 0, detalle: [], error: 'No hay planilla conectada.' };
+  enviandoCola = true;
+  try {
+    // en orden de fecha y día, así una repetición siempre cae después de la primera vez
+    cola.sort((a, b) => (a.payload.fecha + a.payload.dia).localeCompare(b.payload.fecha + b.payload.dia));
+    let detalle = [];
+    const r = await editarPlanilla(async (wb, ws) => {
+      detalle = [];
+      for (const item of cola) {
+        const res = aplicarEntrada(ws, item.payload);
+        detalle.push({ nombre: item.nombre, ok: res.ok, errores: res.errors || [], celdas: (res.writes || []).filter(w => !w.op).length, pasos: res.pasos || [], avisos: res.avisos || [] });
+      }
+      return { guardar: detalle.some(d => d.ok) };
+    });
+    const enviados = r.guardado ? detalle.filter(d => d.ok).length : 0;
+    const restantes = leerCola().filter(x => !(r.guardado && detalle.some(d => d.ok && d.nombre === x.nombre)));
+    restantes.forEach(x => { const d = detalle.find(y => y.nombre === x.nombre); if (d && !d.ok) x.motivo = d.errores[0] || ''; });
+    escribirCola(restantes);
+    if (r.guardado) { localStorage.setItem('entreno_ms_last', String(Date.now())); await loadStats(r.wb); }
+    return { enviados, detalle };
+  } finally {
+    enviandoCola = false;
+    actualizarUIms();
+  }
+}
+async function enviarColaUI() {
+  try {
+    const r = await enviarCola();
+    if (r.error) alert(r.error);
+    else if (r.enviados) alert(r.enviados + ' entrenamiento(s) enviado(s) a la planilla.');
+    else if (r.detalle.length) alert('No se pudo aplicar: ' + (r.detalle[0].errores[0] || 'error desconocido'));
+  } catch (e) { alert(mensajeError(e)); }
+  renderCola();
+}
+function descartarDeCola(nombre) {
+  if (!confirm('¿Descartar "' + nombre + '"? Esto NO lo va a mandar a la planilla.')) return;
+  escribirCola(leerCola().filter(x => x.nombre !== nombre));
+  renderCola();
+}
+function actualizarBadgeCola() {
+  const n = leerCola().length;
+  const b = document.getElementById('colaBanner');
+  if (b) {
+    b.classList.toggle('hidden', n === 0);
+    const t = document.getElementById('colaTxt');
+    if (t) t.textContent = n + (n === 1 ? ' entrenamiento sin enviar a la planilla' : ' entrenamientos sin enviar a la planilla');
+  }
+  const tab = document.querySelector('.tabitem[data-view="pendientes"]');
+  if (tab) tab.lastChild.textContent = n ? 'Pend. (' + n + ')' : 'Pend.';
+}
+function renderCola() {
+  const cola = leerCola();
+  const list = document.getElementById('colaList');
+  const card = document.getElementById('colaCard');
+  if (!list) return;
+  card.style.display = '';
+  document.getElementById('btnEnviarCola').style.display = cola.length ? '' : 'none';
+  if (!cola.length) { list.innerHTML = '<div class="msg">Todo lo que cargaste ya está en la planilla ✓</div>'; return; }
+  list.innerHTML = '';
+  cola.forEach(x => {
+    const div = document.createElement('div');
+    div.className = 'queue-item';
+    div.innerHTML = '<span>' + x.payload.fecha + ' · Día ' + x.payload.dia + ' (' + x.payload.grupo + ')' + (x.motivo ? '<small style="color:var(--danger)">' + x.motivo + '</small>' : '<small>esperando enviarse</small>') + '</span>';
+    const b = document.createElement('button');
+    b.className = 'linkbtn'; b.style.color = 'var(--danger)'; b.textContent = 'Descartar';
+    b.onclick = () => descartarDeCola(x.nombre);
+    div.appendChild(b);
+    list.appendChild(div);
+  });
+}
+
+// ---------- pantalla de conexión con OneDrive ----------
+function setMsStatus(t) { const el = document.getElementById('msStatus'); if (el) el.textContent = t; }
+function actualizarUIms() {
+  const btn = document.getElementById('btnMs');
+  if (!btn) return;
+  const ult = Number(localStorage.getItem('entreno_ms_last') || 0);
+  if (!msConfigurado()) { setMsStatus('Sin conectar: el entrenamiento queda en el celu hasta que lo conectes.'); btn.textContent = 'Conectar'; }
+  else if (!msTieneSesion()) { setMsStatus('Falta iniciar sesión con Microsoft.'); btn.textContent = 'Iniciar sesión'; }
+  else { setMsStatus('Conectado ✓' + (ult ? ' · último envío ' + new Date(ult).toLocaleString() : '')); btn.textContent = 'Actualizar'; }
+  document.getElementById('btnNuevaSemana').disabled = !hayPlanilla();
+  document.getElementById('btnSnapshot').disabled = !hayPlanilla();
+}
+function abrirConfigMs() {
+  document.getElementById('msRedirectShow').textContent = msRedirectUri();
+  document.getElementById('msClientIdInput').value = msClientId();
+  document.getElementById('msPathInput').value = msRuta();
+  document.getElementById('btnMsDesconectar').style.display = msTieneSesion() ? 'block' : 'none';
+  document.getElementById('msOverlay').classList.remove('hidden');
+}
+function cerrarConfigMs() { document.getElementById('msOverlay').classList.add('hidden'); }
+async function guardarConfigMs() {
+  const id = document.getElementById('msClientIdInput').value.trim();
+  const ruta = document.getElementById('msPathInput').value.trim();
+  if (!/^[0-9a-fA-F-]{30,40}$/.test(id)) { alert('El Id. de aplicación (cliente) tiene un formato como 12345678-abcd-1234-abcd-1234567890ab. Copialo entero desde Microsoft.'); return; }
+  if (id !== msClientId()) localStorage.removeItem('entreno_ms_tokens');   // otra app: hay que volver a iniciar sesión
+  localStorage.setItem('entreno_ms_client_id', id);
+  localStorage.setItem('entreno_ms_path', ruta || MS_RUTA_DEFAULT);
+  cerrarConfigMs();
+  actualizarUIms();
+  if (!msTieneSesion()) await msLogin();
+}
+async function msBoton() {
+  if (!msConfigurado()) { abrirConfigMs(); return; }
+  if (!msTieneSesion()) { await msLogin(); return; }
+  setMsStatus('Actualizando…');
+  try { await enviarCola(); await updateStatsAccess(); localStorage.setItem('entreno_ms_last', String(Date.now())); }
+  catch (e) { alert(mensajeError(e)); }
+  actualizarUIms();
+}
+
+// ---------- Pendientes y mantenimiento (mismo motor que el panel: lib/entreno-core.js) ----------
 function logP(msg) {
   const el = document.getElementById('logOutP');
   document.getElementById('logCardP').style.display = 'block';
   el.textContent += msg + '\n';
   el.scrollTop = el.scrollHeight;
-}
-function parseNum(v) { if (v === null || v === undefined || v === '') return null; return parseFloat(String(v).replace(',', '.')); }
-function toSheetNumberString(v) { if (v === null || v === undefined) return ''; return String(v).trim().replace('.', ','); }
-function fmtDelta(n) { if (n === null || Number.isNaN(n)) return ''; const r = Math.round(n * 100) / 100; return toSheetNumberString(r); }
-function dateToDDMMYYYY(iso) { const [y,m,d] = iso.split('-'); return d + '/' + m + '/' + y; }
-function ddmmyyyyToOADate(str) { const [d,m,y] = str.split('/').map(Number); const dt = new Date(Date.UTC(y, m-1, d)); const epoch = Date.UTC(1899, 11, 30); return Math.round((dt - epoch) / 86400000); }
-function findDayGroup(weekBlock, dia) { return weekBlock.groups.find(g => g.grupo !== 'MOVILIDAD' && g.dia === String(dia)) || null; }
-function findMovGroup(weekBlock) { return weekBlock.groups.find(g => g.grupo === 'MOVILIDAD') || null; }
-function findPrevValue(structure, ws, blockIndex, exerciseName, isMov, dia) {
-  for (let b = blockIndex - 1; b >= 0; b--) {
-    const wb = structure.weekBlocks[b];
-    const group = isMov ? findMovGroup(wb) : findDayGroup(wb, dia);
-    if (!group) continue;
-    for (let r = group.start; r <= group.end; r++) {
-      if (ws.getCell(r, COLS.ejercicio).text.trim() === exerciseName.trim()) {
-        const peso = ws.getCell(r, COLS.peso).text;
-        const reps = ws.getCell(r, COLS.reps).text;
-        if (peso || reps) return { peso, reps };
-      }
-    }
-  }
-  return null;
-}
-function computeWrites(structure, ws, entry) {
-  const writes = [];
-  const errors = [];
-  let blockIndex = structure.weekBlocks.length - 1;
-  while (blockIndex >= 0 && structure.weekBlocks[blockIndex].groups.length === 0) blockIndex--;
-  const wb = structure.weekBlocks[blockIndex];
-  if (!wb) { errors.push('No hay una semana preparada todavía. Usá "Preparar semana nueva" primero.'); return { writes, errors }; }
-  const dayGroup = findDayGroup(wb, entry.dia);
-  if (!dayGroup) { errors.push('No encontré el bloque del día ' + entry.dia + ' en la semana actual.'); return { writes, errors }; }
-  const n = dayGroup.end - dayGroup.start + 1;
-  if (entry.ejercicios.some(e => e.posicionIdeal > n)) errors.push('La cantidad de ejercicios no coincide con la plantilla de la planilla (' + n + ' filas). Revisá el orden.');
-  const blank = isGroupBlank(ws, dayGroup);
-  const existingDate = cellDateDDMMYYYY(ws.getCell(dayGroup.start, COLS.fecha));
-  if (!blank && existingDate && existingDate !== dateToDDMMYYYY(entry.fecha)) {
-    errors.push('El bloque del día ' + entry.dia + ' ya tiene datos de otra fecha (' + existingDate + '). Corré "Preparar semana nueva" antes de cargar esta.');
-    return { writes, errors };
-  }
-  entry.ejercicios.forEach(ex => {
-    const row = dayGroup.start + (ex.posicionIdeal - 1);
-    const rowExerciseName = ws.getCell(row, COLS.ejercicio).text.trim();
-    if (rowExerciseName !== ex.nombre.trim()) { errors.push('Fila ' + row + ': se esperaba "' + rowExerciseName + '" pero el registro dice "' + ex.nombre + '". Revisá la plantilla del celular.'); return; }
-    const ordenStr = String(ex.ordenReal) + (ex.ordenReal !== ex.posicionIdeal ? '*' : '');
-    const esAccesoria = ex.maquina === 'accesoria';
-    writes.push({ row, col: 'B', value: dateToDDMMYYYY(entry.fecha), isDate: true, label: ex.nombre });
-    writes.push({ row, col: 'D', value: ordenStr, label: ex.nombre });
-    if (ex.ss) writes.push({ row, col: 'L', value: 'S', label: ex.nombre });
-    if (ex.fallo) writes.push({ row, col: 'M', value: 'S', label: ex.nombre });
-    const notaRetorno = ex.retornoAplicado ? 'Retorno ' + ex.retornoAplicado + '%' : '';
-    const notaFinal = [notaRetorno, ex.notas].filter(Boolean).join(' · ');
-    if (notaFinal) writes.push({ row, col: 'N', value: notaFinal, label: ex.nombre });
-    writes.push({ row, col: 'Q', value: entry.ayuno ? 'Sí' : 'No', label: ex.nombre });
-    if (esAccesoria) {
-      writes.push({ row, col: 'O', value: toSheetNumberString(ex.peso), label: ex.nombre + ' (accesoria)' });
-      writes.push({ row, col: 'P', value: toSheetNumberString(ex.reps), label: ex.nombre + ' (accesoria)' });
-    } else {
-      writes.push({ row, col: 'F', value: toSheetNumberString(ex.peso), label: ex.nombre });
-      writes.push({ row, col: 'H', value: toSheetNumberString(ex.reps), label: ex.nombre });
-      const prev = findPrevValue(structure, ws, blockIndex, ex.nombre, false, entry.dia);
-      if (prev) {
-        const dPeso = parseNum(ex.peso) - parseNum(prev.peso || '0');
-        const dReps = parseNum(ex.reps) - parseNum(prev.reps || '0');
-        writes.push({ row, col: 'I', value: fmtDelta(dReps), label: ex.nombre });
-        writes.push({ row, col: 'J', value: fmtDelta(dPeso), label: ex.nombre });
-      }
-    }
-  });
-  const movGroup = findMovGroup(wb);
-  if (movGroup && entry.movilidad && entry.movilidad.length) {
-    entry.movilidad.forEach(mx => {
-      let found = null;
-      for (let r = movGroup.start; r <= movGroup.end; r++) { if (ws.getCell(r, COLS.ejercicio).text.trim() === mx.nombre.trim()) { found = r; break; } }
-      if (!found) { errors.push('No encontré el ejercicio de movilidad "' + mx.nombre + '" en la plantilla.'); return; }
-      writes.push({ row: found, col: 'B', value: dateToDDMMYYYY(entry.fecha), isDate: true, label: mx.nombre });
-      writes.push({ row: found, col: 'F', value: toSheetNumberString(mx.peso), label: mx.nombre });
-      writes.push({ row: found, col: 'H', value: toSheetNumberString(mx.reps), label: mx.nombre });
-      if (mx.fallo) writes.push({ row: found, col: 'M', value: 'S', label: mx.nombre });
-      if (mx.notas) writes.push({ row: found, col: 'N', value: mx.notas, label: mx.nombre });
-      const prev = findPrevValue(structure, ws, blockIndex, mx.nombre, true, entry.dia);
-      if (prev) {
-        const dPeso = parseNum(mx.peso) - parseNum(prev.peso || '0');
-        const dReps = parseNum(mx.reps) - parseNum(prev.reps || '0');
-        writes.push({ row: found, col: 'I', value: fmtDelta(dReps), label: mx.nombre });
-        writes.push({ row: found, col: 'J', value: fmtDelta(dPeso), label: mx.nombre });
-      }
-    });
-  }
-  return { writes, errors };
-}
-function applyWrites(ws, writes) {
-  writes.forEach(w => {
-    const colNum = Number(Object.keys(COLLETTERS).find(k => COLLETTERS[k] === w.col));
-    const cell = ws.getCell(w.row, colNum);
-    if (w.isDate) { cell.value = ddmmyyyyToOADate(w.value); cell.numFmt = cell.numFmt || 'd/m/yyyy'; }
-    else cell.value = w.value;
-  });
-}
-function duplicateHeaderRow(ws, srcHeaderRow, atRow) {
-  ws.spliceRows(atRow, 0, []);
-  const srcHeader = ws.getRow(srcHeaderRow);
-  const dstHeader = ws.getRow(atRow);
-  for (let c = 1; c <= 17; c++) {
-    const sc = srcHeader.getCell(c); const dc = dstHeader.getCell(c);
-    dc.value = sc.value;
-    if (sc.style) dc.style = JSON.parse(JSON.stringify(sc.style));
-  }
-  dstHeader.height = srcHeader.height;
-}
-function prepareNewWeek(ws, structure) {
-  const lastBlock = structure.weekBlocks[structure.weekBlocks.length - 1];
-  let templateBlock, insertAfterRow;
-  if (lastBlock.groups.length === 0) {
-    templateBlock = structure.weekBlocks[structure.weekBlocks.length - 2];
-    if (!templateBlock) throw new Error('No encontré una semana completa anterior para copiar.');
-    insertAfterRow = lastBlock.headerRow;
-  } else {
-    templateBlock = lastBlock;
-    const newHeaderRow = lastBlock.end + 1;
-    duplicateHeaderRow(ws, lastBlock.headerRow, newHeaderRow);
-    insertAfterRow = newHeaderRow;
-  }
-  const srcStart = templateBlock.start, srcEnd = templateBlock.end;
-  const n = srcEnd - srcStart + 1;
-  const insertAt = insertAfterRow + 1;
-  ws.spliceRows(insertAt, 0, ...Array.from({length:n}, () => []));
-  const clearCols = ['B','D','F','H','I','J','K','L','M','N','O','P','Q'];
-  for (let i = 0; i < n; i++) {
-    const src = ws.getRow(srcStart + i); const dst = ws.getRow(insertAt + i);
-    for (let c = 1; c <= 17; c++) {
-      const sc = src.getCell(c); const dc = dst.getCell(c);
-      dc.value = sc.value;
-      if (sc.style) dc.style = JSON.parse(JSON.stringify(sc.style));
-      if (sc.numFmt) dc.numFmt = sc.numFmt;
-    }
-    dst.height = src.height;
-  }
-  clearCols.forEach(colLetter => {
-    const colNum = Number(Object.keys(COLLETTERS).find(k => COLLETTERS[k] === colLetter));
-    for (let i = 0; i < n; i++) ws.getRow(insertAt + i).getCell(colNum).value = null;
-  });
-  const trailingHeaderRow = insertAt + n;
-  duplicateHeaderRow(ws, insertAfterRow, trailingHeaderRow);
-  return { insertAt, insertEnd: insertAt + n - 1, newHeaderRow: trailingHeaderRow };
-}
-function buildSnapshot(structure, ws) {
-  let blockIndex = structure.weekBlocks.length - 1;
-  while (blockIndex >= 0 && structure.weekBlocks[blockIndex].groups.length === 0) blockIndex--;
-  if (blockIndex < 0) return {};
-  const templateBlock = structure.weekBlocks[blockIndex];
-  const names = [];
-  templateBlock.groups.forEach(g => { for (let r = g.start; r <= g.end; r++) { const n = ws.getCell(r, COLS.ejercicio).text.trim(); if (n) names.push(n); } });
-  const snapshot = {};
-  names.forEach(nombre => {
-    for (let b = blockIndex; b >= 0; b--) {
-      const wb = structure.weekBlocks[b];
-      let found = null;
-      for (const g of wb.groups) { for (let r = g.start; r <= g.end; r++) { if (ws.getCell(r, COLS.ejercicio).text.trim() === nombre) { found = r; break; } } if (found) break; }
-      if (found) {
-        const peso = ws.getCell(found, COLS.peso).text, reps = ws.getCell(found, COLS.reps).text, notas = ws.getCell(found, COLS.notas).text;
-        if (peso || reps) { snapshot[nombre] = { peso, reps, notas }; break; }
-      }
-    }
-  });
-  return snapshot;
 }
 
 async function refreshPending() {
@@ -2221,7 +2201,8 @@ async function refreshPending() {
 function renderPending() {
   const list = document.getElementById('pendingList');
   list.innerHTML = '';
-  if (pendingFiles.length === 0) { list.innerHTML = '<div class="msg">No hay entrenamientos pendientes en app/pending.</div>'; return; }
+  if (!pendingHandle) { list.innerHTML = '<div class="msg">Solo se usa si elegís una carpeta del celu (opción avanzada en Cargar).</div>'; return; }
+  if (pendingFiles.length === 0) { list.innerHTML = '<div class="msg">No hay archivos en app/pending.</div>'; return; }
   pendingFiles.forEach(pf => {
     const div = document.createElement('div');
     div.className = 'pending-item';
@@ -2235,6 +2216,17 @@ function renderPending() {
     list.appendChild(div);
   });
 }
+async function archivarPending(pf) {
+  const file = await pf.handle.getFile();
+  const text = await file.text();
+  if (doneHandle) {
+    const doneFile = await doneHandle.getFileHandle(pf.name, { create: true });
+    const writable = await doneFile.createWritable();
+    await writable.write(text);
+    await writable.close();
+  }
+  await pendingHandle.removeEntry(pf.name);
+}
 async function previewPendingFile(pf) {
   try {
     const file = await pf.handle.getFile();
@@ -2242,93 +2234,91 @@ async function previewPendingFile(pf) {
     const wb = await loadWorkbookRaw();
     const ws = wb.getWorksheet(SHEET_NAME);
     if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); return; }
-    const structure = parseStructure(ws);
-    const { writes, errors } = computeWrites(structure, ws, entry);
+    // se aplica solo en memoria para mostrar qué pasaría; recién al confirmar se guarda
+    const r = aplicarEntrada(ws, entry);
     document.getElementById('previewCard').style.display = 'block';
     document.getElementById('previewInfo').textContent = entry.fecha + ' — Día ' + entry.dia + ' (' + entry.grupo + ')' + (entry.ayuno ? ' — ayuno' : '');
     const tbody = document.querySelector('#previewTable tbody');
     tbody.innerHTML = '';
-    errors.forEach(e => { const tr = document.createElement('tr'); tr.innerHTML = '<td colspan="4"><span class="rtag err">Error</span> ' + e + '</td>'; tbody.appendChild(tr); });
-    writes.forEach(w => { const tr = document.createElement('tr'); tr.innerHTML = '<td>' + w.row + '</td><td>' + w.label + '</td><td>' + w.col + '</td><td>' + w.value + '</td>'; tbody.appendChild(tr); });
-    currentApply = errors.length ? null : { entry, writes, pf, ws, wb };
-    document.getElementById('btnConfirmApply').disabled = !!errors.length;
-  } catch (e) { setRStatus('Error al leer el pendiente: ' + e.message); }
+    const nota = (clase, txt) => { const tr = document.createElement('tr'); tr.innerHTML = '<td colspan="4"><span class="rtag ' + clase + '">' + (clase === 'err' ? 'Error' : 'Aviso') + '</span> ' + txt + '</td>'; tbody.appendChild(tr); };
+    (r.pasos || []).forEach(p => nota('ss', p));
+    (r.avisos || []).forEach(a => nota('ss', a));
+    (r.errors || []).forEach(e => nota('err', e));
+    (r.writes || []).forEach(w => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = w.op ? '<td>' + w.at + '</td><td colspan="3">' + w.label + '</td>' : '<td>' + w.row + '</td><td>' + w.label + '</td><td>' + w.col + '</td><td>' + w.value + '</td>';
+      tbody.appendChild(tr);
+    });
+    currentApply = r.ok ? { entry, pf } : null;
+    document.getElementById('btnConfirmApply').disabled = !r.ok;
+  } catch (e) { setRStatus('Error al leer el pendiente: ' + mensajeError(e)); }
 }
 document.getElementById('btnApplyAll').addEventListener('click', async () => {
   try {
-    const wb = await loadWorkbookRaw();
-    const ws = wb.getWorksheet(SHEET_NAME);
-    if (!ws) { setRStatus('No encontré la hoja "' + SHEET_NAME + '".'); return; }
-    const structure = parseStructure(ws);
-    const applied = [], skipped = [];
+    const leidos = [], skipped = [];
     for (const pf of pendingFiles) {
-      let entry;
-      try { const file = await pf.handle.getFile(); entry = JSON.parse(await file.text()); } catch (e) { skipped.push(pf.name + ': JSON inválido'); continue; }
-      const { writes, errors } = computeWrites(structure, ws, entry);
-      if (errors.length) { skipped.push(pf.name + ': ' + errors[0]); continue; }
-      applyWrites(ws, writes);
-      applied.push(pf);
+      try { leidos.push({ pf, entry: JSON.parse(await (await pf.handle.getFile()).text()) }); } catch (e) { skipped.push(pf.name + ': JSON inválido'); }
     }
-    if (applied.length) {
-      await saveWorkbook(wb);
-      for (const pf of applied) {
-        const file = await pf.handle.getFile();
-        const text = await file.text();
-        const doneFile = await doneHandle.getFileHandle(pf.name, { create: true });
-        const writable = await doneFile.createWritable();
-        await writable.write(text);
-        await writable.close();
-        await pendingHandle.removeEntry(pf.name);
+    leidos.sort((a, b) => (a.entry.fecha + a.entry.dia).localeCompare(b.entry.fecha + b.entry.dia));
+    let applied = [];
+    const r = await editarPlanilla(async (wb, ws) => {
+      applied = [];
+      for (const { pf, entry } of leidos) {
+        const res = aplicarEntrada(ws, entry);
+        if (!res.ok) { skipped.push(pf.name + ': ' + res.errors[0]); continue; }
+        res.pasos.forEach(p => logP(pf.name + ' → ' + p));
+        applied.push(pf);
       }
-    }
+      return { guardar: applied.length > 0 };
+    });
+    if (r.guardado) for (const pf of applied) await archivarPending(pf);
     logP('Aplicados (' + applied.length + '): ' + applied.map(p => p.name).join(', '));
     if (skipped.length) logP('Con error, quedaron pendientes (' + skipped.length + '):\n' + skipped.join('\n'));
     setRStatus(applied.length + ' aplicado(s). ' + (skipped.length ? skipped.length + ' con error.' : 'Todo al día.'));
-    if (applied.length) { statsLoaded = false; await updateStatsAccess(); } else await refreshPending();
-  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR aplicar todos: ' + e.message); }
+    if (r.guardado) await loadStats(r.wb); else await refreshPending();
+    await refreshPending();
+  } catch (e) { setRStatus('Error: ' + mensajeError(e)); logP('ERROR aplicar todos: ' + mensajeError(e)); }
 });
 document.getElementById('btnCancelApply').addEventListener('click', () => { document.getElementById('previewCard').style.display = 'none'; currentApply = null; });
 document.getElementById('btnConfirmApply').addEventListener('click', async () => {
   if (!currentApply) return;
   try {
-    applyWrites(currentApply.ws, currentApply.writes);
-    await saveWorkbook(currentApply.wb);
-    const file = await currentApply.pf.handle.getFile();
-    const text = await file.text();
-    const doneFile = await doneHandle.getFileHandle(currentApply.pf.name, { create: true });
-    const writable = await doneFile.createWritable();
-    await writable.write(text);
-    await writable.close();
-    await pendingHandle.removeEntry(currentApply.pf.name);
-    logP('Aplicado: ' + currentApply.pf.name + ' (' + currentApply.writes.length + ' celdas)');
-    setRStatus('Listo. ' + currentApply.pf.name + ' aplicado.');
+    const { entry, pf } = currentApply;
+    let celdas = 0;
+    // se vuelve a leer la planilla y se aplica de nuevo, por si cambió desde la vista previa
+    const r = await editarPlanilla(async (wb, ws) => {
+      const res = aplicarEntrada(ws, entry);
+      if (!res.ok) throw new Error(res.errors[0]);
+      celdas = res.writes.filter(w => !w.op).length;
+      return { guardar: true };
+    });
+    await archivarPending(pf);
+    logP('Aplicado: ' + pf.name + ' (' + celdas + ' celdas)');
+    setRStatus('Listo. ' + pf.name + ' aplicado.');
     document.getElementById('previewCard').style.display = 'none';
     currentApply = null;
-    statsLoaded = false; await updateStatsAccess();
-  } catch (e) { setRStatus('Error al aplicar: ' + e.message); logP('ERROR: ' + e.message); }
+    await loadStats(r.wb);
+    await refreshPending();
+  } catch (e) { setRStatus('Error al aplicar: ' + mensajeError(e)); logP('ERROR: ' + mensajeError(e)); }
 });
 document.getElementById('btnNuevaSemana').addEventListener('click', async () => {
   try {
-    const wb = await loadWorkbookRaw();
-    const ws = wb.getWorksheet(SHEET_NAME);
-    const structure = parseStructure(ws);
-    const result = prepareNewWeek(ws, structure);
-    await saveWorkbook(wb);
+    let result;
+    const r = await editarPlanilla(async (wb, ws) => { result = prepareNewWeek(ws, parseStructure(ws)); return { guardar: true }; });
     setRStatus('Semana nueva lista: filas ' + result.insertAt + '-' + result.insertEnd + '.');
     logP('Nueva semana insertada: ' + JSON.stringify(result));
-    statsLoaded = false; await updateStatsAccess();
-  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR nueva semana: ' + e.message); }
+    await loadStats(r.wb);
+  } catch (e) { setRStatus('Error: ' + mensajeError(e)); logP('ERROR nueva semana: ' + mensajeError(e)); }
 });
 document.getElementById('btnSnapshot').addEventListener('click', async () => {
   try {
     const wb = await loadWorkbookRaw();
     const ws = wb.getWorksheet(SHEET_NAME);
-    const structure = parseStructure(ws);
-    const snapshot = buildSnapshot(structure, ws);
+    const snapshot = buildSnapshot(parseStructure(ws), ws);
     document.getElementById('snapshotCard').style.display = 'block';
     document.getElementById('snapshotOut').textContent = JSON.stringify(snapshot, null, 1);
     setRStatus('Snapshot listo (' + Object.keys(snapshot).length + ' ejercicios).');
-  } catch (e) { setRStatus('Error: ' + e.message); logP('ERROR snapshot: ' + e.message); }
+  } catch (e) { setRStatus('Error: ' + mensajeError(e)); logP('ERROR snapshot: ' + mensajeError(e)); }
 });
 document.getElementById('btnCopySnapshot').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(document.getElementById('snapshotOut').textContent); setRStatus('Copiado.'); }
@@ -2344,15 +2334,16 @@ document.querySelectorAll('.tabitem').forEach(btn => {
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
     window.scrollTo(0, 0);
     if (btn.dataset.view === 'pendientes') {
-      if (!pendingHandle) { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para poder usar esta pestaña.'); return; }
-      refreshPending();
+      renderCola();
+      renderPending();
+      if (pendingHandle) refreshPending();
       return;
     }
     const isStatsView = btn.dataset.view === 'semana' || btn.dataset.view === 'progreso' || btn.dataset.view === 'constancia';
     if (!isStatsView) return;
     if (!statsLoaded) {
       // sin caché todavía (primera vez en este celu) — ahí sí hace falta conectar.
-      if (xlsxHandle) { updateStatsAccess(); } else { setRStatus('Tocá "Configurar guardado directo" (abajo de Cargar) para ver tus estadísticas por primera vez.'); }
+      if (hayPlanilla()) { updateStatsAccess(); } else { setRStatus('Conectá OneDrive (Cargar → OneDrive) para ver tus estadísticas por primera vez.'); }
       return;
     }
     // Chart.js no dibuja bien un gráfico creado en un canvas oculto — al volver a
@@ -2362,9 +2353,28 @@ document.querySelectorAll('.tabitem').forEach(btn => {
   });
 });
 
-// primero lo que ya está guardado acá (instantáneo), y recién después se intenta
-// una reconexión silenciosa a Drive (sin pedir nada si el permiso sigue activo).
+// primero lo que ya está guardado acá (instantáneo), y recién después se conecta a OneDrive
 loadStatsCacheIfAny();
+actualizarBadgeCola();
+actualizarUIms();
+(async function arranqueOneDrive() {
+  try { await msProcesarRetorno(); } catch (e) { setMsStatus(mensajeError(e)); }
+  actualizarUIms();
+  if (msConfigurado() && msTieneSesion()) {
+    try {
+      const r = await enviarCola();               // si había algo sin enviar, va ahora (y refresca las estadísticas)
+      if (!r.detalle.length) await updateStatsAccess();
+    } catch (e) { setMsStatus(mensajeError(e)); setRStatus(mensajeError(e)); }
+    actualizarUIms();
+  }
+})();
+// al volver a la app (o recuperar internet) se reintenta lo que haya quedado sin enviar
+function reintentarCola() {
+  if (!leerCola().length || !hayPlanilla() || enviandoCola) return;
+  enviarCola().then(() => { renderCola(); }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) reintentarCola(); });
+window.addEventListener('online', reintentarCola);
 </script>
 </body>
 </html>
