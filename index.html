@@ -390,7 +390,7 @@
     <pre id="snapshotOut" class="logbox"></pre>
   </div>
 
-  <div class="rcard" id="pendingCard">
+  <div class="rcard" id="pendingCard" style="display:none">
     <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
       <h3 style="margin:0">Carpeta pending (avanzado)</h3>
     </div>
@@ -2199,9 +2199,12 @@ async function refreshPending() {
   renderPending();
 }
 function renderPending() {
+  // esta tarjeta es del método viejo (carpeta local, "avanzado") — si estás con OneDrive
+  // no aplica y ni se muestra, para no confundir con errores que no significan nada.
+  document.getElementById('pendingCard').style.display = pendingHandle ? '' : 'none';
   const list = document.getElementById('pendingList');
   list.innerHTML = '';
-  if (!pendingHandle) { list.innerHTML = '<div class="msg">Solo se usa si elegís una carpeta del celu (opción avanzada en Cargar).</div>'; return; }
+  if (!pendingHandle) return;
   if (pendingFiles.length === 0) { list.innerHTML = '<div class="msg">No hay archivos en app/pending.</div>'; return; }
   pendingFiles.forEach(pf => {
     const div = document.createElement('div');
