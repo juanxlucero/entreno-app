@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
 <script src="lib/exceljs.min.js"></script>
-<script src="lib/entreno-core.js?v=20260921a"></script>
+<script src="lib/entreno-core.js?v=20261009a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -259,17 +259,17 @@
     </label>
   </div>
 
-  <div class="toggle-row" style="flex-wrap:wrap; gap:8px;">
-    <span>Modo retorno (después de un corte)</span>
-    <label class="switch">
+  <div class="toggle-row" id="retornoRow" style="padding:6px 14px; gap:8px;">
+    <span style="white-space:nowrap">Modo retorno</span>
+    <div id="retornoPctRow" class="chiprow hidden" style="margin:0 0 0 auto; gap:6px; flex-wrap:nowrap;">
+      <div class="chip" data-pct="50" style="padding:3px 10px">50%</div>
+      <div class="chip" data-pct="75" style="padding:3px 10px">75%</div>
+      <div class="chip" data-pct="90" style="padding:3px 10px">90%</div>
+    </div>
+    <label class="switch" id="retornoSwitch">
       <input type="checkbox" id="retornoOn">
       <span class="slider"></span>
     </label>
-    <div id="retornoPctRow" class="chiprow hidden" style="width:100%; margin-top:4px;">
-      <div class="chip" data-pct="50">50%</div>
-      <div class="chip" data-pct="75">75%</div>
-      <div class="chip" data-pct="90">90%</div>
-    </div>
   </div>
 
   <div class="section-title" id="grupoTitle">Ejercicios</div>
@@ -306,8 +306,8 @@
 </div><!-- /view-cargar -->
 
 <div class="view rview" id="view-semana">
-  <h1>Semana actual</h1>
-  <p class="sub">Elegí una semana para ver sus 4 días.</p>
+  <h1>Bloque actual</h1>
+  <p class="sub">Elegí un bloque para ver sus 4 días.</p>
   <select class="rsel" id="weekSelect"></select>
   <div class="daybtns" id="weekDayBtns"></div>
   <div class="rcard" id="weekCard"></div>
@@ -336,17 +336,17 @@
 
 <div class="view rview" id="view-constancia">
   <h1>Constancia</h1>
-  <p class="sub">Racha de semanas y días entrenados.</p>
+  <p class="sub">Racha de bloques y días entrenados.</p>
 
   <div class="rcard">
     <div class="seg-tabs" id="goalTabs">
-      <button class="seg-tab active" data-gran="semana">Semanas</button>
+      <button class="seg-tab active" data-gran="semana">Bloques</button>
       <button class="seg-tab" data-gran="mes">Meses</button>
       <button class="seg-tab" data-gran="año">Años</button>
     </div>
     <div class="goal-topline">
-      <h3>Objetivo · 4 por semana</h3>
-      <div><span class="num" id="goalStat">—</span><span style="font-size:11.5px;color:var(--muted)" id="goalLabel"> semanas</span></div>
+      <h3>Objetivo · 4 por bloque</h3>
+      <div><span class="num" id="goalStat">—</span><span style="font-size:11.5px;color:var(--muted)" id="goalLabel"> bloques</span></div>
     </div>
     <div class="rchart-wrap" style="height:170px"><canvas id="goalChart"></canvas></div>
   </div>
@@ -354,7 +354,7 @@
   <div class="rcard">
     <div class="streak-hero">
       <div class="streak-ring" id="streakRing"><div class="streak-ring-inner" id="streakNum">0</div></div>
-      <div class="streak-label">Semanas seguidas<br><b id="streakText">—</b></div>
+      <div class="streak-label">Bloques seguidos<br><b id="streakText">—</b></div>
     </div>
     <div class="cal-header">
       <button id="calPrev">‹</button>
@@ -369,7 +369,7 @@
 
 <div class="view rview" id="view-pendientes">
   <h1>Pendientes y mantenimiento</h1>
-  <p class="sub">Lo que todavía no llegó a la planilla, y las herramientas de la semana.</p>
+  <p class="sub">Lo que todavía no llegó a la planilla, y las herramientas del bloque.</p>
 
   <div class="rcard" id="colaCard">
     <h3>Sin enviar a la planilla</h3>
@@ -379,7 +379,7 @@
 
   <div class="rcard">
     <div class="row" style="flex-direction:column">
-      <button class="btn btn-primary" id="btnNuevaSemana" disabled>Preparar semana nueva</button>
+      <button class="btn btn-primary" id="btnNuevaSemana" disabled>Preparar bloque nuevo</button>
       <button class="btn btn-secondary" id="btnSnapshot" disabled>Exportar snapshot</button>
     </div>
   </div>
@@ -418,7 +418,7 @@
 
 <nav class="tabbar" id="tabbar">
   <button class="tabitem active" data-view="cargar"><span class="ico">🏋️</span>Cargar</button>
-  <button class="tabitem" data-view="semana"><span class="ico">📅</span>Semana</button>
+  <button class="tabitem" data-view="semana"><span class="ico">📅</span>Bloque</button>
   <button class="tabitem" data-view="progreso"><span class="ico">📈</span>Progreso</button>
   <button class="tabitem" data-view="constancia"><span class="ico">🔥</span>Constancia</button>
   <button class="tabitem" data-view="pendientes"><span class="ico">📥</span>Pend.</button>
@@ -900,7 +900,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   const accTag = maquina === 'accesoria' ? ' [accesoria]' : '';
   let hint = '';
   if (prevNormal) hint += '<div class="prev-hint">antes' + (prevNormal.fecha ? ' (' + fechaCorta(prevNormal.fecha) + ')' : '') + accTag + ': ' + prevNormal.reps + 'x' + prevNormal.peso + (prevNormal.notas ? ' · ' + prevNormal.notas : '') + '</div>';
-  if (prevRetorno) hint += '<div class="prev-hint">retorno ' + prevRetorno.retornoAplicado + '%' + (prevRetorno.fecha ? ' (' + fechaCorta(prevRetorno.fecha) + ')' : '') + accTag + ': ' + prevRetorno.reps + 'x' + prevRetorno.peso + '</div>';
+  if (prevRetorno && retornoPct) hint +='<div class="prev-hint">retorno ' + prevRetorno.retornoAplicado + '%' + (prevRetorno.fecha ? ' (' + fechaCorta(prevRetorno.fecha) + ')' : '') + accTag + ': ' + prevRetorno.reps + 'x' + prevRetorno.peso + '</div>';
   if (retornoSugerido) hint += '<div class="prev-hint">→ sugerido ' + retornoPct + '%: ' + retornoSugerido + '</div>';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
@@ -1638,7 +1638,7 @@ let weekSelIdx = 0, weekSelDia = 1;
 function initWeekSelector() {
   const sel = document.getElementById('weekSelect');
   if (!DATA.weeks.length) { sel.innerHTML = ''; renderWeekCard(); return; }
-  sel.innerHTML = DATA.weeks.map((w, i) => '<option value="' + i + '">' + (i === 0 ? 'Semana actual — ' : '') + w.label + '</option>').join('');
+  sel.innerHTML = DATA.weeks.map((w, i) => '<option value="' + i + '">' + (i === 0 ? 'Bloque actual — ' : '') + w.label + '</option>').join('');
   sel.value = '0';
   weekSelIdx = 0;
   sel.onchange = () => { weekSelIdx = Number(sel.value); renderWeekDayBtns(); renderWeekCard(); };
@@ -1653,7 +1653,7 @@ function renderWeekDayBtns() {
     const veces = week ? week.dias[d].length : 0;
     const b = document.createElement('div');
     b.className = 'daybtn' + (d === weekSelDia ? ' active' : '');
-    b.innerHTML = 'Día ' + d + (veces > 1 ? '<small>×' + veces + ' en la semana</small>' : '');
+    b.innerHTML = 'Día ' + d + (veces > 1 ? '<small>×' + veces + ' en el bloque</small>' : '');
     b.onclick = () => { weekSelDia = d; renderWeekDayBtns(); renderWeekCard(); };
     el.appendChild(b);
   }
@@ -1661,7 +1661,7 @@ function renderWeekDayBtns() {
 function renderWeekCard() {
   const card = document.getElementById('weekCard');
   const week = DATA.weeks[weekSelIdx];
-  if (!week) { card.innerHTML = '<div class="rempty">Todavía no hay semanas con registros.</div>'; return; }
+  if (!week) { card.innerHTML = '<div class="rempty">Todavía no hay bloques con registros.</div>'; return; }
   const sesiones = week.dias[weekSelDia] || [];
   if (!sesiones.length) { card.innerHTML = '<div class="day-head"><span class="grupo">Día ' + weekSelDia + '</span></div><div class="rempty">Sin registro este día.</div>'; return; }
   // si el día se repitió dentro de la semana, se ven todas las veces una debajo de otra
@@ -1788,7 +1788,7 @@ function renderGoalChart() {
     counts = weeks.map(w => w.sesiones.length); // sesiones reales de la semana (incluye repeticiones)
     goals = counts.map(() => 4);
     labels = weeks.map(w => w.label.split(' – ')[0]);
-    unitLabel = 'semanas';
+    unitLabel = 'bloques';
   }
   const metGoal = counts.filter((c, i) => c >= goals[i]).length;
   document.getElementById('goalStat').textContent = counts.length ? (metGoal + ' / ' + counts.length) : '—';
@@ -1822,7 +1822,7 @@ function renderConstancia() {
   renderGoalChart();
   const { streak, detalle } = DATA.racha;
   document.getElementById('streakNum').textContent = streak;
-  document.getElementById('streakText').textContent = streak + ' semana' + (streak === 1 ? '' : 's') + ' seguida' + (streak === 1 ? '' : 's') + ' completa' + (streak === 1 ? '' : 's');
+  document.getElementById('streakText').textContent = streak + ' bloque' + (streak === 1 ? '' : 's') + ' completo' + (streak === 1 ? '' : 's');
   document.getElementById('streakRing').style.setProperty('--pct', Math.min(100, streak * 16.6));
   const list = document.getElementById('weekList');
   list.innerHTML = detalle.map(d => {
@@ -2308,10 +2308,10 @@ document.getElementById('btnNuevaSemana').addEventListener('click', async () => 
   try {
     let result;
     const r = await editarPlanilla(async (wb, ws) => { result = prepareNewWeek(ws, parseStructure(ws)); return { guardar: true }; });
-    setRStatus('Semana nueva lista: filas ' + result.insertAt + '-' + result.insertEnd + '.');
-    logP('Nueva semana insertada: ' + JSON.stringify(result));
+    setRStatus('Bloque nuevo listo: filas ' + result.insertAt + '-' + result.insertEnd + '.');
+    logP('Nuevo bloque insertado: ' + JSON.stringify(result));
     await loadStats(r.wb);
-  } catch (e) { setRStatus('Error: ' + mensajeError(e)); logP('ERROR nueva semana: ' + mensajeError(e)); }
+  } catch (e) { setRStatus('Error: ' + mensajeError(e)); logP('ERROR nuevo bloque: ' + mensajeError(e)); }
 });
 document.getElementById('btnSnapshot').addEventListener('click', async () => {
   try {
