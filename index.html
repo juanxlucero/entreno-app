@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
 <script src="lib/exceljs.min.js"></script>
-<script src="lib/entreno-core.js?v=20261009a"></script>
+<script src="lib/entreno-core.js?v=20261026a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -272,6 +272,11 @@
     </label>
   </div>
 
+  <div class="toggle-row" id="gimRow" style="padding:6px 14px; gap:8px;">
+    <span style="white-space:nowrap">Gimnasio</span>
+    <select id="gimSel" style="margin-left:auto; width:auto; max-width:62%; padding:4px 8px; font-size:13px;"></select>
+  </div>
+
   <div class="section-title" id="grupoTitle">Ejercicios</div>
   <div id="cards"></div>
 
@@ -325,6 +330,10 @@
       <option value="90">Últimos 3 meses</option>
       <option id="periodYearCur" value="year-cur">Este año</option>
       <option id="periodYearPrev" value="year-prev">Año anterior</option>
+    </select>
+    <select class="rsel" id="scopeSelect">
+      <option value="hab">Mi gimnasio · máquina principal</option>
+      <option value="all">Todo (accesorias y otros gimnasios)</option>
     </select>
     <div class="rstat-row">
       <div class="rstat-big"><span id="statAvg">—</span><small> kg promedio</small></div>
@@ -567,6 +576,7 @@ function findLocalPrev(nombre, maquina, filtro) {
     let d;
     try { d = JSON.parse(localStorage.getItem(key)); } catch(e) { continue; }
     if (!d || !d.fecha || d.fecha === draft.fecha) continue;
+    if ((d.gimnasio || '') !== (draft.gimnasio || '')) continue;   // otro gimnasio: no es referencia
     const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
     if (!entry || (!entry.reps && !entry.peso)) continue;
     if ((entry.maquina || 'principal') !== maquina) continue;
@@ -599,7 +609,9 @@ function diasEntre(fA, fB) {
   return Math.round((toUTC(fA) - toUTC(fB)) / 86400000);
 }
 function findPrevCombined(nombre, maquina, filtro) {
-  const hist = (maquina === 'principal' && typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre]) ? DATA.exerciseHistory[nombre] : [];
+  const gimActual = draft.gimnasio || '';
+  const hist = (typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre] ? DATA.exerciseHistory[nombre] : [])
+    .filter(h => (h.maquina || 'principal') === maquina && (h.gimnasio || '') === gimActual);
   let local = findLocalPrev(nombre, maquina, filtro);
 
   // "normal" acá puede ser en realidad una sesión de retorno que en ESTE celular
@@ -806,8 +818,25 @@ function fechaCorta(f) {
 
 function draftKey(fecha, dia) { return 'entreno_draft_' + fecha + '_' + dia; }
 
+// ---------- gimnasio (vacío = el habitual; se queda elegido hasta que lo cambies) ----------
+// Lo entrenado en otro gimnasio queda marcado en la planilla (columna GIMNASIO) y no se mezcla
+// con las referencias "antes" ni con los gráficos de progreso del gimnasio habitual.
+let gimnasioActual = (function(){ try { return localStorage.getItem('entreno_gimnasio_v1') || ''; } catch(e) { return ''; } })();
+let gimnasiosConocidos = (function(){ try { return JSON.parse(localStorage.getItem('entreno_gimnasios_v1')) || []; } catch(e) { return []; } })();
+function guardarGimnasios() {
+  try { localStorage.setItem('entreno_gimnasio_v1', gimnasioActual); localStorage.setItem('entreno_gimnasios_v1', JSON.stringify(gimnasiosConocidos)); } catch(e) {}
+}
+function renderGimUI() {
+  const sel = document.getElementById('gimSel');
+  const actual = (draft && draft.gimnasio) || '';
+  const lista = gimnasiosConocidos.slice();
+  if (actual && !lista.includes(actual)) lista.push(actual);
+  sel.innerHTML = '<option value="">Habitual</option>' + lista.map(g => '<option value="' + g.replace(/"/g, '&quot;') + '">' + g + '</option>').join('') + '<option value="__nuevo__">➕ Otro gimnasio…</option>';
+  sel.value = actual;
+  document.getElementById('gimRow').style.borderColor = actual ? 'var(--accent)' : '';
+}
 function newDraft(fecha, dia) {
-  return { fecha, dia, ayuno: false, ejercicios: {}, movilidad: {} };
+  return { fecha, dia, ayuno: false, gimnasio: gimnasioActual, ejercicios: {}, movilidad: {} };
 }
 
 function loadDraft(fecha, dia) {
@@ -845,6 +874,7 @@ function switchDia(d) {
 
 function render() {
   document.getElementById('ayuno').checked = !!draft.ayuno;
+  renderGimUI();
   document.getElementById('grupoTitle').textContent = (TEMPLATE.grupos[currentDia]||'Ejercicios');
 
   const cardsEl = document.getElementById('cards');
@@ -886,10 +916,10 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   const usarSoloNormal = !esMovilidad && !!retornoPct;
   const prev = findPrevCombined(nombre, maquina, usarSoloNormal ? 'normal' : 'any')
     || (usarSoloNormal ? findPrevCombined(nombre, maquina, 'any') : null)
-    || (maquina === 'principal' ? PREV[nombre] : null);
+    || (maquina === 'principal' && !draft.gimnasio ? PREV[nombre] : null);
   // para mostrar en "antes" se buscan las DOS referencias por separado (100% y último
   // retorno), sin importar en qué modo esté la tarjeta ahora mismo.
-  const prevNormal = findPrevCombined(nombre, maquina, 'normal') || (maquina === 'principal' ? PREV[nombre] : null);
+  const prevNormal = findPrevCombined(nombre, maquina, 'normal') || (maquina === 'principal' && !draft.gimnasio ? PREV[nombre] : null);
   const prevRetorno = esMovilidad ? null : findPrevCombined(nombre, maquina, 'retorno');
 
   const head = document.createElement('div');
@@ -1154,6 +1184,7 @@ async function finalizarDia() {
     dia: currentDia,
     grupo: TEMPLATE.grupos[currentDia] || '',
     ayuno: !!draft.ayuno,
+    gimnasio: draft.gimnasio || '',
     ejercicios,
     movilidad
   };
@@ -1361,6 +1392,19 @@ function closeExport() {
 document.getElementById('ayuno').addEventListener('change', (e) => {
   draft.ayuno = e.target.checked;
   persistDraft();
+});
+
+document.getElementById('gimSel').addEventListener('change', (e) => {
+  let v = e.target.value;
+  if (v === '__nuevo__') {
+    v = (prompt('Nombre del gimnasio (ej.: "Always Costa Rica, CABA")') || '').trim();
+    if (v && !gimnasiosConocidos.includes(v)) gimnasiosConocidos.push(v);
+  }
+  gimnasioActual = v;
+  draft.gimnasio = v;
+  guardarGimnasios();
+  persistDraft();
+  render();   // las referencias "antes" dependen del gimnasio elegido
 });
 
 // ---------- modo retorno (después de un corte, cargar % del peso habitual) ----------
@@ -1580,7 +1624,7 @@ async function loadStats(wbEnMemoria) {
 // que se guardó acá (instantáneo) y la conexión a OneDrive solo sirve para refrescar esa
 // caché en segundo plano.
 // v2: las semanas ahora traen sesiones repetidas (formato distinto a v1, por eso otra clave).
-const STATS_CACHE_KEY = 'entreno_stats_cache_v2';
+const STATS_CACHE_KEY = 'entreno_stats_cache_v3';
 try { localStorage.removeItem('entreno_stats_cache_v1'); } catch (e) {}
 function saveStatsCache() {
   try {
@@ -1687,13 +1731,14 @@ function initExerciseSelect() {
   sel.innerHTML = html;
   sel.onchange = () => renderChart(sel.value);
 }
-document.getElementById('periodSelect').addEventListener('change', () => {
+['periodSelect', 'scopeSelect'].forEach(id => document.getElementById(id).addEventListener('change', () => {
   const sel = document.getElementById('exerciseSelect');
   if (sel.value) renderChart(sel.value);
-});
+}));
 function renderChart(nombre) {
   const period = document.getElementById('periodSelect').value;
-  const raw = DATA.exerciseHistory[nombre] || [];
+  const soloHabitual = document.getElementById('scopeSelect').value !== 'all';
+  const raw = (DATA.exerciseHistory[nombre] || []).filter(h => !soloHabitual || ((h.maquina || 'principal') === 'principal' && !h.gimnasio));
   let points = raw.map(h => {
     const parts = h.fecha.split('/').map(Number);
     const date = new Date(Date.UTC(parts[2], parts[1] - 1, parts[0]));
@@ -1750,11 +1795,12 @@ function renderChart(nombre) {
 let goalChartInstance = null, goalGranularity = 'semana';
 function buildDayCardHTML(s) {
   const rep = s.extra ? '<span class="rtag ss">Repetición</span>' : '';
-  let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + rep + '</span><span class="fecha">' + s.fecha + '</span></div>';
+  const gimTag = s.gimnasio ? '<span class="rtag fallo">📍 ' + s.gimnasio + '</span>' : '';
+  let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + rep + gimTag + '</span><span class="fecha">' + s.fecha + '</span></div>';
   html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
   s.ejercicios.forEach(e => {
     const retornoPct = parseRetornoTag(e.notas);
-    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '');
+    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '') + (e.maquina === 'accesoria' ? '<span class="rtag ss">🔧 Accesoria</span>' : '');
     html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
   });
   html += '</tbody></table>';
