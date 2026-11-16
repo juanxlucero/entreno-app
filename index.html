@@ -291,7 +291,7 @@
   </div>
 
   <div class="toggle-row" id="gimRow" style="padding:6px 14px; gap:8px;">
-    <span style="white-space:nowrap">Gimnasio</span>
+    <span style="white-space:nowrap">Gimnasio / etapa</span>
     <select id="gimSel" style="margin-left:auto; width:auto; max-width:62%; padding:4px 8px; font-size:13px;"></select>
   </div>
 
@@ -589,7 +589,7 @@ function loadPrev() {
 let PREV = loadPrev();
 
 // filtro: 'any' (default) | 'normal' (ignora sesiones en modo retorno) | 'retorno' (solo modo retorno)
-function findLocalPrev(nombre, maquina, filtro) {
+function findLocalPrev(nombre, maquina, filtro, gimOverride) {
   filtro = filtro || 'any';
   maquina = maquina || 'principal';
   let best = null;
@@ -599,7 +599,7 @@ function findLocalPrev(nombre, maquina, filtro) {
     let d;
     try { d = JSON.parse(localStorage.getItem(key)); } catch(e) { continue; }
     if (!d || !d.fecha || d.fecha === draft.fecha) continue;
-    if ((d.gimnasio || '') !== (draft.gimnasio || '')) continue;   // otro gimnasio: no es referencia
+    if ((d.gimnasio || '') !== (gimOverride !== undefined ? gimOverride : (draft.gimnasio || ''))) continue;   // otro gimnasio/etapa: no es referencia
     const entry = (d.ejercicios && d.ejercicios[nombre]) || (d.movilidad && d.movilidad[nombre]);
     if (!entry || (!entry.reps && !entry.peso)) continue;
     if ((entry.maquina || 'principal') !== maquina) continue;
@@ -631,11 +631,11 @@ function diasEntre(fA, fB) {
   };
   return Math.round((toUTC(fA) - toUTC(fB)) / 86400000);
 }
-function findPrevCombined(nombre, maquina, filtro) {
-  const gimActual = draft.gimnasio || '';
+function findPrevCombined(nombre, maquina, filtro, gimOverride) {
+  const gimActual = gimOverride !== undefined ? gimOverride : (draft.gimnasio || '');
   const hist = (typeof DATA !== 'undefined' && DATA && DATA.exerciseHistory && DATA.exerciseHistory[nombre] ? DATA.exerciseHistory[nombre] : [])
     .filter(h => (h.maquina || 'principal') === maquina && (h.gimnasio || '') === gimActual);
-  let local = findLocalPrev(nombre, maquina, filtro);
+  let local = findLocalPrev(nombre, maquina, filtro, gimActual);
 
   // "normal" acá puede ser en realidad una sesión de retorno que en ESTE celular
   // quedó sin la marca (bug ya corregido para cargas nuevas, pero una entrada vieja
@@ -845,7 +845,7 @@ function draftKey(fecha, dia) { return 'entreno_draft_' + fecha + '_' + dia; }
 // Lo entrenado en otro gimnasio queda marcado en la planilla (columna GIMNASIO) y no se mezcla
 // con las referencias "antes" ni con los gráficos de progreso del gimnasio habitual.
 let gimnasioActual = (function(){ try { return localStorage.getItem('entreno_gimnasio_v1') || ''; } catch(e) { return ''; } })();
-let gimnasiosConocidos = (function(){ try { return JSON.parse(localStorage.getItem('entreno_gimnasios_v1')) || []; } catch(e) { return []; } })();
+let gimnasiosConocidos = (function(){ try { const raw = localStorage.getItem('entreno_gimnasios_v1'); return raw === null ? ['Prehab LCA'] : (JSON.parse(raw) || []); } catch(e) { return []; } })();
 function guardarGimnasios() {
   try { localStorage.setItem('entreno_gimnasio_v1', gimnasioActual); localStorage.setItem('entreno_gimnasios_v1', JSON.stringify(gimnasiosConocidos)); } catch(e) {}
 }
@@ -944,6 +944,9 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   // retorno), sin importar en qué modo esté la tarjeta ahora mismo.
   const prevNormal = findPrevCombined(nombre, maquina, 'normal') || (maquina === 'principal' && !draft.gimnasio ? PREV[nombre] : null);
   const prevRetorno = esMovilidad ? null : findPrevCombined(nombre, maquina, 'retorno');
+  // en una etapa/gimnasio distinto del habitual (ej.: Prehab LCA) el 'antes' es de esa etapa; lo habitual
+  // queda como referencia aparte, y de punto de partida de las ruedas si todavía no hay nada de la etapa
+  const habitual = (!esMovilidad && draft.gimnasio) ? (findPrevCombined(nombre, maquina, 'normal', '') || (maquina === 'principal' ? PREV[nombre] : null)) : null;
 
   const head = document.createElement('div');
   head.className = 'card-head';
@@ -955,6 +958,7 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   const resumenPrev = (p) => (p.series && p.series.length > 1 && !seriesIguales(p.series)) ? p.series.map(s => s.reps + 'x' + s.peso).join(' · ') : p.reps + 'x' + p.peso;
   if (prevNormal) hint += '<div class="prev-hint">antes' + (prevNormal.fecha ? ' (' + fechaCorta(prevNormal.fecha) + ')' : '') + accTag + ': ' + resumenPrev(prevNormal) + (prevNormal.notas ? ' · ' + prevNormal.notas : '') + '</div>';
   if (prevRetorno && retornoPct) hint +='<div class="prev-hint">retorno ' + prevRetorno.retornoAplicado + '%' + (prevRetorno.fecha ? ' (' + fechaCorta(prevRetorno.fecha) + ')' : '') + accTag + ': ' + prevRetorno.reps + 'x' + prevRetorno.peso + '</div>';
+  if (habitual) hint += '<div class="prev-hint">habitual' + (habitual.fecha ? ' (' + fechaCorta(habitual.fecha) + ')' : '') + accTag + ': ' + resumenPrev(habitual) + '</div>';
   if (retornoSugerido) hint += '<div class="prev-hint">→ sugerido ' + retornoPct + '%: ' + retornoSugerido + '</div>';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
     '<span class="card-summary">' + (data ? ((data.series && data.series.length > 1 ? data.series.map(s => s.reps + 'x' + s.peso).join(' · ') : data.reps + 'x' + data.peso) + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
@@ -1022,7 +1026,8 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
 
   // con series distintas las ruedas muestran la 1ª serie (data.reps/peso guardan la de referencia)
   const s1Data = (data && data.series && data.series.length > 1) ? data.series[0] : data;
-  const s1Prev = (prev && prev.series && prev.series.length > 1) ? prev.series[0] : prev;
+  const prevBase = prev || habitual;
+  const s1Prev = (prevBase && prevBase.series && prevBase.series.length > 1) ? prevBase.series[0] : prevBase;
   const repsInit = (s1Data && s1Data.reps) ? s1Data.reps : (s1Prev ? s1Prev.reps : 8);
   const pesoOrigen = (s1Data && s1Data.peso) ? s1Data.peso : (retornoSugerido || (s1Prev ? s1Prev.peso : '0'));
   const pesoParts = pesoToWheelParts(pesoOrigen);
