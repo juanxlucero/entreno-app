@@ -845,7 +845,13 @@ function draftKey(fecha, dia) { return 'entreno_draft_' + fecha + '_' + dia; }
 // Lo entrenado en otro gimnasio queda marcado en la planilla (columna GIMNASIO) y no se mezcla
 // con las referencias "antes" ni con los gráficos de progreso del gimnasio habitual.
 let gimnasioActual = (function(){ try { return localStorage.getItem('entreno_gimnasio_v1') || ''; } catch(e) { return ''; } })();
-let gimnasiosConocidos = (function(){ try { const raw = localStorage.getItem('entreno_gimnasios_v1'); return raw === null ? ['Prehab LCA'] : (JSON.parse(raw) || []); } catch(e) { return []; } })();
+// etapas predefinidas (siempre disponibles) + los gimnasios que se vayan agregando
+const ETAPAS_PREDEFINIDAS = ['Prehab LCA', 'Post operatorio'];
+let gimnasiosConocidos = (function(){
+  let guardados = [];
+  try { guardados = JSON.parse(localStorage.getItem('entreno_gimnasios_v1')) || []; } catch(e) {}
+  return ETAPAS_PREDEFINIDAS.concat(guardados.filter(g => !ETAPAS_PREDEFINIDAS.includes(g)));
+})();
 function guardarGimnasios() {
   try { localStorage.setItem('entreno_gimnasio_v1', gimnasioActual); localStorage.setItem('entreno_gimnasios_v1', JSON.stringify(gimnasiosConocidos)); } catch(e) {}
 }
@@ -1223,19 +1229,25 @@ function buildSeriesEditor(cardId, data, prev, getS1) {
     head1.style.cssText = 'font-size:12.5px; color:var(--muted); margin:4px 0;';
     head1.textContent = '1ª serie: ' + s1.reps + ' × ' + s1.peso + ' (ruedas de arriba)';
     box.appendChild(head1);
+    // una fila de ruedas (reps | kg | decimales) por serie, de la 2ª en adelante
+    const repsValues = Array.from({ length: 31 }, (_, k) => ({ label: String(k), value: k }));
+    const enteroValues = Array.from({ length: 251 }, (_, k) => ({ label: String(k), value: k }));
+    const decimalValues = [0, 25, 50, 75].map(d => ({ label: ',' + (d === 50 ? '5' : (d === 0 ? '0' : d)), value: d }));
     rows.forEach((r, i) => {
-      const line = document.createElement('div');
-      line.style.cssText = 'display:flex; align-items:center; gap:8px; margin:4px 0;';
-      const lab = document.createElement('span'); lab.style.cssText = 'width:28px; font-size:12.5px; color:var(--muted)'; lab.textContent = (i + 2) + 'ª';
-      const inReps = document.createElement('input'); inReps.setAttribute('inputmode', 'numeric'); inReps.placeholder = 'reps'; inReps.value = r.reps; inReps.style.cssText = 'width:34%; padding:8px;';
-      const x = document.createElement('span'); x.textContent = '×'; x.style.color = 'var(--muted)';
-      const inPeso = document.createElement('input'); inPeso.setAttribute('inputmode', 'decimal'); inPeso.placeholder = 'kg'; inPeso.value = r.peso; inPeso.style.cssText = 'width:42%; padding:8px;';
-      inReps.oninput = () => { r.reps = inReps.value.trim(); };
-      inPeso.oninput = () => { r.peso = inPeso.value.trim(); };
-      line.append(lab, inReps, x, inPeso);
-      box.appendChild(line);
+      const lab = document.createElement('div');
+      lab.style.cssText = 'font-size:12.5px; color:var(--muted); margin:8px 0 2px;';
+      lab.textContent = (i + 2) + 'ª serie — reps · kg';
+      box.appendChild(lab);
+      const wr = document.createElement('div');
+      wr.className = 'wheelrow';
+      const parts = pesoToWheelParts(r.peso);
+      let ent = parts.entero, dec = parts.decimal;
+      const repsNum = Math.max(0, Math.min(30, Math.round(num(r.reps))));
+      wr.appendChild(buildWheel('srr_' + cardId + '_' + i, repsValues, repsNum, false, (v) => { r.reps = String(v); }));
+      wr.appendChild(buildWheel('srp_' + cardId + '_' + i, enteroValues, ent, false, (v) => { ent = v; r.peso = wheelPartsToPeso(ent, dec); }));
+      wr.appendChild(buildWheel('srd_' + cardId + '_' + i, decimalValues, dec, true, (v) => { dec = v; r.peso = wheelPartsToPeso(ent, dec); }));
+      box.appendChild(wr);
     });
-
     // guardar el patrón actual (relativo a la 1ª serie) para reutilizarlo
     const guardar = document.createElement('div');
     guardar.className = 'chip'; guardar.style.marginTop = '6px'; guardar.textContent = '💾 Guardar este patrón';
@@ -1249,6 +1261,12 @@ function buildSeriesEditor(cardId, data, prev, getS1) {
     };
     box.appendChild(guardar);
     wrap.appendChild(box);
+    // las ruedas recién creadas necesitan acomodar su scroll visual una vez que ya tienen layout
+    const syncRuedas = () => wrap.querySelectorAll('.wheel-viewport').forEach(vp => { if (vp.__wheelSync) vp.__wheelSync(); });
+    requestAnimationFrame(syncRuedas);
+    setTimeout(syncRuedas, 100);
+    setTimeout(syncRuedas, 300);
+    setTimeout(() => { const c = wrap.closest('.card'); if (c) ensureGuardarVisible(c); }, 450);
   };
 
   // las series del editor = la 1ª (ruedas) + las filas; null si el editor está apagado
