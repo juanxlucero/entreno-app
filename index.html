@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
 <script src="lib/exceljs.min.js"></script>
-<script src="lib/entreno-core.js?v=20261026a"></script>
+<script src="lib/entreno-core.js?v=20261116a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -207,6 +207,21 @@
   .cal-day.empty { visibility: hidden; }
   .cal-day.trained { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
   .week-list { margin-top: 16px; }
+  .bl-block { border-bottom: 1px solid var(--border); }
+  .bl-block > summary, .bl-ses > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 12.5px; }
+  .bl-block > summary::-webkit-details-marker, .bl-ses > summary::-webkit-details-marker { display: none; }
+  .bl-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--bl, #9aa1ab); }
+  .bl-block.b4 { --bl: #1f9d57; } .bl-block.b3 { --bl: #3b82f6; } .bl-block.b2 { --bl: #e0954a; } .bl-block.b1 { --bl: #e5484d; }
+  .bl-block.en-curso .bl-dot { background: transparent; border: 2px dashed var(--bl); }
+  .bl-rango { font-weight: 600; }
+  .bl-meta { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; }
+  .bl-estado { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; color: #fff; background: var(--bl, #9aa1ab); white-space: nowrap; }
+  .bl-nota { font-size: 11.5px; color: var(--muted); padding: 0 0 8px 20px; }
+  .bl-ses { margin-left: 20px; border-top: 1px dashed var(--border); }
+  .bl-ses > summary { padding: 7px 0; font-size: 12px; color: var(--muted); }
+  .bl-ses.fuera > summary { opacity: .65; }
+  .bl-ses-body { padding: 0 0 10px; }
+  .bl-pausa { text-align: center; font-size: 11.5px; color: var(--muted); padding: 8px 0; border-bottom: 1px solid var(--border); }
   .week-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .week-row:last-child { border-bottom: none; }
   .pill { padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
@@ -1830,10 +1845,10 @@ function renderGoalChart() {
     labels = buckets.map(b => String(b.y));
     unitLabel = 'años';
   } else {
-    const weeks = (DATA.weeks || []).slice().reverse();
-    counts = weeks.map(w => w.sesiones.length); // sesiones reales de la semana (incluye repeticiones)
+    const bloques = computeBloques(DATA.weeks || []).bloques.slice().reverse(); // cronológico
+    counts = bloques.map(b => b.n);   // entrenamientos dentro del plazo de 10 días
     goals = counts.map(() => 4);
-    labels = weeks.map(w => w.label.split(' – ')[0]);
+    labels = bloques.map(b => { const s = String(b.inicio); return s.slice(6, 8) + '/' + s.slice(4, 6) + '/' + s.slice(2, 4); });
     unitLabel = 'bloques';
   }
   const metGoal = counts.filter((c, i) => c >= goals[i]).length;
@@ -1850,7 +1865,7 @@ function renderGoalChart() {
     data: {
       labels,
       datasets: [
-        { type: 'bar', label: 'Entrenamientos', data: counts, backgroundColor: counts.map((c, i) => c >= goals[i] ? '#35c46b' : '#e0954a'), borderRadius: 3, maxBarThickness: 18, order: 2 },
+        { type: 'bar', label: 'Entrenamientos', data: counts, backgroundColor: counts.map(c => colorBloque(c)), borderRadius: 3, maxBarThickness: 18, order: 2 },
         { type: 'line', label: 'Objetivo', data: goals, borderColor: '#5a6070', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, order: 1 }
       ]
     },
@@ -1864,17 +1879,24 @@ function renderGoalChart() {
     }
   });
 }
-function renderConstancia() {
-  renderGoalChart();
-  const { streak, detalle } = DATA.racha;
-  document.getElementById('streakNum').textContent = streak;
-  document.getElementById('streakText').textContent = streak + ' bloque' + (streak === 1 ? '' : 's') + ' completo' + (streak === 1 ? '' : 's');
-  document.getElementById('streakRing').style.setProperty('--pct', Math.min(100, streak * 16.6));
+let rachaBloques = null, bloquesVisibles = 8;
+function renderBloques() {
   const list = document.getElementById('weekList');
-  list.innerHTML = detalle.map(d => {
-    const cls = d.estado === 'completa' ? 'completa' : (d.estado === 'en curso' ? 'curso' : 'corte');
-    return '<div class="week-row"><span>' + d.rango + '</span><span class="pill ' + cls + '">' + d.estado + '</span></div>';
-  }).join('');
+  const total = rachaBloques.bloques.length;
+  list.innerHTML = bloquesListHTML(rachaBloques, buildDayCardHTML, bloquesVisibles)
+    + (total > bloquesVisibles ? '<button class="btn" id="bloquesMas" style="margin-top:10px;width:100%;padding:10px;font-size:13px;background:var(--card);color:var(--text);border:1px solid var(--border)">Ver más (' + (total - bloquesVisibles) + ')</button>' : '');
+  const mas = document.getElementById('bloquesMas');
+  if (mas) mas.onclick = () => { bloquesVisibles += 12; renderBloques(); };
+}
+function renderConstancia() {
+  rachaBloques = computeBloques(DATA.weeks || []);
+  renderGoalChart();
+  const { streak, mensaje } = rachaBloques;
+  document.getElementById('streakNum').textContent = streak;
+  document.getElementById('streakText').innerHTML = streak + ' bloque' + (streak === 1 ? '' : 's') + ' seguido' + (streak === 1 ? '' : 's') + '<br><span style="font-weight:400;font-size:11.5px;color:var(--muted)">' + mensaje + '</span>';
+  document.getElementById('streakRing').style.setProperty('--pct', Math.min(100, streak * 16.6));
+  bloquesVisibles = 8;
+  renderBloques();
   let latest = null;
   DATA.allDates.forEach(f => { const k = fechaKey(f); if (!latest || k > latest.k) latest = { k, f }; });
   if (latest) { const [d, m, y] = latest.f.split('/').map(Number); calYear = y; calMonth = m - 1; }
