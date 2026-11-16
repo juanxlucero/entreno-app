@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1115">
 <script src="lib/exceljs.min.js"></script>
-<script src="lib/entreno-core.js?v=20261116a"></script>
+<script src="lib/entreno-core.js?v=20261117a"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -207,7 +207,10 @@
   .cal-day.empty { visibility: hidden; }
   .cal-day.trained { background: var(--ok-soft); color: var(--ok); font-weight: 700; }
   .week-list { margin-top: 16px; }
-  .bl-block { border-bottom: 1px solid var(--border); }
+    .sdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#1f9d57; margin-right:5px; vertical-align:middle; }
+  .sr-chip { display:inline-block; font-size:10px; padding:1px 6px; border-radius:6px; background:rgba(224,149,74,.18); color:#e0954a; margin:1px 3px 1px 0; white-space:nowrap; }
+  .sr-chip.ref { font-weight:700; background:rgba(224,149,74,.32); }
+  .srvar { background:rgba(224,149,74,.2) !important; color:#e0954a !important; }  .bl-block { border-bottom: 1px solid var(--border); }
   .bl-block > summary, .bl-ses > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 12.5px; }
   .bl-block > summary::-webkit-details-marker, .bl-ses > summary::-webkit-details-marker { display: none; }
   .bl-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--bl, #9aa1ab); }
@@ -345,6 +348,11 @@
       <option value="90">Últimos 3 meses</option>
       <option id="periodYearCur" value="year-cur">Este año</option>
       <option id="periodYearPrev" value="year-prev">Año anterior</option>
+    </select>
+    <select class="rsel" id="metricSelect">
+      <option value="max">Peso máximo</option>
+      <option value="series">Por serie (S1, S2, S3…)</option>
+      <option value="volumen">Volumen (series × reps × peso)</option>
     </select>
     <select class="rsel" id="scopeSelect">
       <option value="hab">Mi gimnasio · máquina principal</option>
@@ -598,7 +606,7 @@ function findLocalPrev(nombre, maquina, filtro) {
     if (filtro === 'normal' && entry.retornoAplicado) continue;
     if (filtro === 'retorno' && !entry.retornoAplicado) continue;
     if (!best || d.fecha > best.fecha) {
-      best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, notas: entry.notas || '', retornoAplicado: entry.retornoAplicado || null };
+      best = { fecha: d.fecha, reps: entry.reps, peso: entry.peso, series: entry.series || null, notas: entry.notas || '', retornoAplicado: entry.retornoAplicado || null };
     }
   }
   return best;
@@ -664,7 +672,7 @@ function findPrevCombined(nombre, maquina, filtro) {
     if (filtro === 'normal' && pct) continue;
     if (filtro === 'retorno' && !pct) continue;
     if (!h.peso && !h.reps) continue;
-    fromSheet = { fecha: h.fecha, reps: h.reps, peso: h.peso, notas: h.notas || '', retornoAplicado: pct };
+    fromSheet = { fecha: h.fecha, reps: h.reps, peso: h.peso, series: h.series || null, notas: h.notas || '', retornoAplicado: pct };
     break;
   }
   if (!local) return fromSheet;
@@ -944,11 +952,12 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   const retornoSugerido = (!esMovilidad && retornoPct && prev) ? calcRetornoPeso(prev.peso, retornoPct) : null;
   const accTag = maquina === 'accesoria' ? ' [accesoria]' : '';
   let hint = '';
-  if (prevNormal) hint += '<div class="prev-hint">antes' + (prevNormal.fecha ? ' (' + fechaCorta(prevNormal.fecha) + ')' : '') + accTag + ': ' + prevNormal.reps + 'x' + prevNormal.peso + (prevNormal.notas ? ' · ' + prevNormal.notas : '') + '</div>';
+  const resumenPrev = (p) => (p.series && p.series.length > 1 && !seriesIguales(p.series)) ? p.series.map(s => s.reps + 'x' + s.peso).join(' · ') : p.reps + 'x' + p.peso;
+  if (prevNormal) hint += '<div class="prev-hint">antes' + (prevNormal.fecha ? ' (' + fechaCorta(prevNormal.fecha) + ')' : '') + accTag + ': ' + resumenPrev(prevNormal) + (prevNormal.notas ? ' · ' + prevNormal.notas : '') + '</div>';
   if (prevRetorno && retornoPct) hint +='<div class="prev-hint">retorno ' + prevRetorno.retornoAplicado + '%' + (prevRetorno.fecha ? ' (' + fechaCorta(prevRetorno.fecha) + ')' : '') + accTag + ': ' + prevRetorno.reps + 'x' + prevRetorno.peso + '</div>';
   if (retornoSugerido) hint += '<div class="prev-hint">→ sugerido ' + retornoPct + '%: ' + retornoSugerido + '</div>';
   head.innerHTML = '<div class="card-head-left"><div>' + orden + '<span class="card-name">' + nombre + machTag + '</span></div>' + hint + '</div>' +
-    '<span class="card-summary">' + (data ? (data.reps + 'x' + data.peso + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
+    '<span class="card-summary">' + (data ? ((data.series && data.series.length > 1 ? data.series.map(s => s.reps + 'x' + s.peso).join(' · ') : data.reps + 'x' + data.peso) + (data.fallo?' ⚠':'') + (data.ss?' 🔗':'')) : '') + '</span>';
   if (openCardId === card.id) card.classList.add('open');
   head.onclick = () => {
     const isOpen = card.classList.toggle('open');
@@ -1011,8 +1020,11 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
     body.appendChild(ordenRow);
   }
 
-  const repsInit = (data && data.reps) ? data.reps : (prev ? prev.reps : 8);
-  const pesoOrigen = (data && data.peso) ? data.peso : (retornoSugerido || (prev ? prev.peso : '0'));
+  // con series distintas las ruedas muestran la 1ª serie (data.reps/peso guardan la de referencia)
+  const s1Data = (data && data.series && data.series.length > 1) ? data.series[0] : data;
+  const s1Prev = (prev && prev.series && prev.series.length > 1) ? prev.series[0] : prev;
+  const repsInit = (s1Data && s1Data.reps) ? s1Data.reps : (s1Prev ? s1Prev.reps : 8);
+  const pesoOrigen = (s1Data && s1Data.peso) ? s1Data.peso : (retornoSugerido || (s1Prev ? s1Prev.peso : '0'));
   const pesoParts = pesoToWheelParts(pesoOrigen);
 
   const wheelLabels = document.createElement('div');
@@ -1048,6 +1060,10 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   }));
   wheelRow.appendChild(pesoHidden);
   body.appendChild(wheelRow);
+
+  if (!esMovilidad) {
+    body.appendChild(buildSeriesEditor(card.id, data, prev, () => { const r = document.getElementById('reps_' + card.id); return { reps: r ? r.value : String(repsInit), peso: pesoHidden.value }; }));
+  }
 
   if (!esMovilidad) {
     const ssLabel = document.createElement('label');
@@ -1117,6 +1133,129 @@ function buildCard(nombre, idx, fullList, esMovilidad) {
   return card;
 }
 
+// ---------- series distintas ----------
+// Por defecto el ejercicio son N series iguales (las ruedas de arriba). "Series distintas" abre
+// el editor: la 1ª serie son las ruedas y acá se cargan las demás, con atajos preestablecidos.
+function cargarPatrones() { try { return JSON.parse(localStorage.getItem('entreno_series_patrones_v1')) || []; } catch(e) { return []; } }
+function guardarPatrones(p) { try { localStorage.setItem('entreno_series_patrones_v1', JSON.stringify(p)); } catch(e) {} }
+function buildSeriesEditor(cardId, data, prev, getS1) {
+  const wrap = document.createElement('div');
+  wrap.id = 'series_' + cardId;
+  wrap.className = 'series-ed';
+  wrap.style.marginBottom = '8px';
+  const inicial = (data && data.series && data.series.length > 1) ? data.series : null;
+  let on = !!inicial;
+  let n = inicial ? inicial.length : 3;
+  let rows = inicial ? inicial.slice(1).map(s => ({ reps: String(s.reps), peso: String(s.peso) })) : [];
+  const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return Number.isNaN(x) ? 0 : x; };
+  const fmtPeso = (x) => String(Math.round(x * 4) / 4).replace('.', ',');
+
+  const completar = () => {
+    const s1 = getS1();
+    while (rows.length < n - 1) rows.push({ reps: s1.reps, peso: s1.peso });
+    rows.length = n - 1;
+  };
+  const aplicarPct = (pct) => {   // pct = variación del peso por serie (0.05 = baja 5% en cada serie)
+    const s1 = getS1();
+    rows = Array.from({ length: n - 1 }, (_, i) => ({ reps: s1.reps, peso: fmtPeso(num(s1.peso) * (1 + pct * (i + 1))) }));
+  };
+
+  const paint = () => {
+    wrap.innerHTML = '';
+    const toggle = document.createElement('div');
+    toggle.className = 'chip' + (on ? ' ss-on' : '');
+    toggle.textContent = on ? '✔ Series distintas' : '➕ Series distintas';
+    toggle.onclick = () => { on = !on; if (on) completar(); wrap.dataset.on = on ? '1' : '0'; paint(); };
+    wrap.appendChild(toggle);
+    wrap.dataset.on = on ? '1' : '0';
+    if (!on) return;
+    completar();
+
+    const box = document.createElement('div');
+    box.style.cssText = 'margin-top:8px; padding:8px; border:1px solid var(--border); border-radius:10px;';
+    // cantidad de series
+    const cnt = document.createElement('div');
+    cnt.style.cssText = 'display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:13px;';
+    cnt.innerHTML = '<span style="color:var(--muted)">Series</span>';
+    const menos = document.createElement('div'); menos.className = 'chip'; menos.textContent = '−';
+    const mas = document.createElement('div'); mas.className = 'chip'; mas.textContent = '+';
+    const nTxt = document.createElement('b'); nTxt.textContent = n;
+    menos.onclick = () => { if (n > 2) { n--; paint(); } };
+    mas.onclick = () => { if (n < 6) { n++; paint(); } };
+    cnt.append(menos, nTxt, mas);
+    box.appendChild(cnt);
+
+    // atajos preestablecidos
+    const presets = document.createElement('div');
+    presets.className = 'chiprow';
+    const addPreset = (label, fn, extra) => {
+      const c = document.createElement('div'); c.className = 'chip'; c.textContent = label;
+      c.onclick = () => { fn(); paint(); };
+      if (extra) c.appendChild(extra);
+      presets.appendChild(c);
+    };
+    addPreset('= Iguales', () => aplicarPct(0));
+    if (prev && prev.series && prev.series.length > 1) {
+      addPreset('↺ Última vez', () => { n = prev.series.length; rows = prev.series.slice(1).map(s => ({ reps: String(s.reps), peso: String(s.peso) })); });
+    }
+    addPreset('↓ 5%', () => aplicarPct(-0.05));
+    addPreset('↓ 10%', () => aplicarPct(-0.10));
+    addPreset('↑ 5%', () => aplicarPct(0.05));
+    const patrones = cargarPatrones();
+    patrones.forEach((p, idx) => {
+      const x = document.createElement('span'); x.textContent = ' ✕'; x.style.color = 'var(--danger)';
+      x.onclick = (ev) => { ev.stopPropagation(); const l = cargarPatrones(); l.splice(idx, 1); guardarPatrones(l); paint(); };
+      addPreset('★ ' + p.nombre, () => {
+        const s1 = getS1(); n = p.pasos.length + 1;
+        rows = p.pasos.map(q => ({ reps: String(Math.max(0, Math.round(num(s1.reps) + q.repsDelta))), peso: fmtPeso(num(s1.peso) * q.pesoPct / 100) }));
+      }, x);
+    });
+    box.appendChild(presets);
+
+    // filas de la 2ª serie en adelante
+    const s1 = getS1();
+    const head1 = document.createElement('div');
+    head1.style.cssText = 'font-size:12.5px; color:var(--muted); margin:4px 0;';
+    head1.textContent = '1ª serie: ' + s1.reps + ' × ' + s1.peso + ' (ruedas de arriba)';
+    box.appendChild(head1);
+    rows.forEach((r, i) => {
+      const line = document.createElement('div');
+      line.style.cssText = 'display:flex; align-items:center; gap:8px; margin:4px 0;';
+      const lab = document.createElement('span'); lab.style.cssText = 'width:28px; font-size:12.5px; color:var(--muted)'; lab.textContent = (i + 2) + 'ª';
+      const inReps = document.createElement('input'); inReps.setAttribute('inputmode', 'numeric'); inReps.placeholder = 'reps'; inReps.value = r.reps; inReps.style.cssText = 'width:34%; padding:8px;';
+      const x = document.createElement('span'); x.textContent = '×'; x.style.color = 'var(--muted)';
+      const inPeso = document.createElement('input'); inPeso.setAttribute('inputmode', 'decimal'); inPeso.placeholder = 'kg'; inPeso.value = r.peso; inPeso.style.cssText = 'width:42%; padding:8px;';
+      inReps.oninput = () => { r.reps = inReps.value.trim(); };
+      inPeso.oninput = () => { r.peso = inPeso.value.trim(); };
+      line.append(lab, inReps, x, inPeso);
+      box.appendChild(line);
+    });
+
+    // guardar el patrón actual (relativo a la 1ª serie) para reutilizarlo
+    const guardar = document.createElement('div');
+    guardar.className = 'chip'; guardar.style.marginTop = '6px'; guardar.textContent = '💾 Guardar este patrón';
+    guardar.onclick = () => {
+      const base = getS1();
+      if (!num(base.peso)) { alert('Cargá primero el peso de la 1ª serie.'); return; }
+      const pasos = rows.map(r => ({ pesoPct: Math.round(num(r.peso) / num(base.peso) * 1000) / 10, repsDelta: Math.round(num(r.reps) - num(base.reps)) }));
+      const nombre = pasos.map(p => (p.pesoPct === 100 ? '=' : String(p.pesoPct).replace('.', ',') + '%') + (p.repsDelta ? (p.repsDelta > 0 ? '+' : '') + p.repsDelta + 'r' : '')).join(' · ');
+      const l = cargarPatrones().filter(p => p.nombre !== nombre);
+      l.push({ nombre, pasos }); guardarPatrones(l.slice(-6)); paint();
+    };
+    box.appendChild(guardar);
+    wrap.appendChild(box);
+  };
+
+  // las series del editor = la 1ª (ruedas) + las filas; null si el editor está apagado
+  wrap.getSeries = () => {
+    if (!on) return null;
+    const s1 = getS1();
+    return [{ reps: s1.reps, peso: s1.peso }].concat(rows.map(r => ({ reps: r.reps, peso: r.peso })));
+  };
+  paint();
+  return wrap;
+}
+
 function guardarSet(nombre, cardId, esMovilidad) {
   const reps = document.getElementById('reps_'+cardId).value.trim();
   const peso = document.getElementById('peso_'+cardId).value.trim();
@@ -1133,7 +1272,16 @@ function guardarSet(nombre, cardId, esMovilidad) {
     const ordenEl = document.getElementById('orden_'+cardId);
     const ordenReal = ordenEl ? (parseInt(ordenEl.value, 10) || null) : null;
     const maquina = getSelectedMachine(nombre, draft.ejercicios[nombre]);
-    draft.ejercicios[nombre] = { reps, peso, fallo, notas, ss, ordenReal, maquina, retornoAplicado: retornoPct || null };
+    // series distintas: la 1ª sale de las ruedas, el resto del editor; reps/peso guardan la de referencia
+    const serEl = document.getElementById('series_' + cardId);
+    let series = serEl && serEl.getSeries ? serEl.getSeries() : null;
+    let repsRef = reps, pesoRef = peso;
+    if (series) {
+      series = series.filter(s => s.reps !== '' || s.peso !== '');
+      if (series.length < 2 || seriesIguales(series)) series = null;
+      else { const r = serieReferencia(series); repsRef = r.reps; pesoRef = r.peso; }
+    }
+    draft.ejercicios[nombre] = { reps: repsRef, peso: pesoRef, series, fallo, notas, ss, ordenReal, maquina, retornoAplicado: retornoPct || null };
     syncSS();
   }
   persistDraft();
@@ -1174,6 +1322,7 @@ async function finalizarDia() {
       ordenReal: ordenRealDe(nombre),
       peso: e.peso,
       reps: e.reps,
+      series: (e.series && e.series.length > 1) ? e.series : null,
       ss: e.ss || null,
       fallo: !!e.fallo,
       notas: e.notas || '',
@@ -1746,7 +1895,7 @@ function initExerciseSelect() {
   sel.innerHTML = html;
   sel.onchange = () => renderChart(sel.value);
 }
-['periodSelect', 'scopeSelect'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+['periodSelect', 'scopeSelect', 'metricSelect'].forEach(id => document.getElementById(id).addEventListener('change', () => {
   const sel = document.getElementById('exerciseSelect');
   if (sel.value) renderChart(sel.value);
 }));
@@ -1757,7 +1906,7 @@ function renderChart(nombre) {
   let points = raw.map(h => {
     const parts = h.fecha.split('/').map(Number);
     const date = new Date(Date.UTC(parts[2], parts[1] - 1, parts[0]));
-    return { date, fecha: h.fecha, peso: parseFloat(String(h.peso || '0').replace(',', '.')), reps: h.reps };
+    return { date, fecha: h.fecha, peso: parseFloat(String(h.peso || '0').replace(',', '.')), reps: h.reps, series: h.series, nSeries: h.nSeries };
   }).filter(p => !Number.isNaN(p.peso) && p.peso > 0);
 
   if (period === '90') { const cutoff = Date.now() - 90 * 86400000; points = points.filter(p => p.date.getTime() >= cutoff); }
@@ -1772,17 +1921,19 @@ function renderChart(nombre) {
     if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     return;
   }
-  const vals = points.map(p => p.peso);
+  const metrica = document.getElementById('metricSelect').value;
+  const prog = datosProgreso(points, metrica);
+  const vals = prog.vals;
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
   const min = Math.min(...vals), max = Math.max(...vals);
-  document.getElementById('statAvg').textContent = avg.toFixed(1).replace('.', ',');
-  document.getElementById('statMin').textContent = String(min).replace('.', ',');
-  document.getElementById('statMax').textContent = String(max).replace('.', ',');
-  document.getElementById('statLast').textContent = String(points[points.length - 1].peso).replace('.', ',') + ' kg';
+  const fmt = (v) => (metrica === 'volumen' ? String(Math.round(v)) : String(v)).replace('.', ',');
+  document.getElementById('statAvg').textContent = (metrica === 'volumen' ? String(Math.round(avg)) : avg.toFixed(1)).replace('.', ',');
+  document.getElementById('statMin').textContent = fmt(min);
+  document.getElementById('statMax').textContent = fmt(max);
+  document.getElementById('statLast').textContent = fmt(vals[vals.length - 1]) + (metrica === 'volumen' ? ' kg tot.' : ' kg');
 
-  const DAY_MS = 86400000;
-  const firstMs = points[0].date.getTime();
-  const hist = points.map(p => ({ x: Math.round((p.date.getTime() - firstMs) / DAY_MS), y: p.peso, fecha: p.fecha, reps: p.reps }));
+  const firstMs = prog.firstMs, DAY_MS = 86400000;
+  const colores = ['#4f8cff', '#35c46b', '#e0954a', '#a78bfa', '#ff5d5d'];
   const pad = Math.max(1, (max - min) * 0.15);
   const canvas = document.getElementById('progressChart');
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
@@ -1790,22 +1941,21 @@ function renderChart(nombre) {
   const ctx = canvas.getContext('2d');
   chartInstance = new Chart(ctx, {
     type: 'line',
-    data: { datasets: [{
-      label: 'Peso (kg)', data: hist, borderColor: '#4f8cff', backgroundColor: 'rgba(79,140,255,.12)',
-      pointBackgroundColor: hist.map((p, i) => i === hist.length - 1 ? '#e0954a' : '#35c46b'),
-      pointRadius: 3.5, pointHoverRadius: 5.5, tension: 0.3, fill: true, borderWidth: 2
-    }] },
+    data: { datasets: prog.datasets.map((ds, i) => ({
+      label: ds.label, data: ds.data, borderColor: colores[i % colores.length], backgroundColor: 'rgba(79,140,255,.12)',
+      pointBackgroundColor: colores[i % colores.length], pointRadius: 3.5, pointHoverRadius: 5.5, tension: 0.3,
+      fill: prog.datasets.length === 1, borderWidth: 2
+    })) },
     options: {
       responsive: true, maintainAspectRatio: false,
       scales: {
         x: { type: 'linear', ticks: { color: '#9aa1ab', font: {size:10}, callback: (val) => { const d = new Date(firstMs + val * DAY_MS); return String(d.getUTCDate()).padStart(2,'0') + '/' + String(d.getUTCMonth()+1).padStart(2,'0'); } }, grid: { color: '#2a2e37' } },
         y: { suggestedMin: min - pad, suggestedMax: max + pad, ticks: { color: '#9aa1ab', font:{size:10} }, grid: { color: '#2a2e37' } }
       },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items) => hist[items[0].dataIndex].fecha, label: (ctx) => ctx.parsed.y + ' kg · ' + (hist[ctx.dataIndex].reps || '?') + ' reps' } } }
+      plugins: { legend: { display: prog.datasets.length > 1, labels: { color: '#9aa1ab', boxWidth: 10, font: {size:10} } }, tooltip: { callbacks: { title: (items) => items[0].raw.fecha, label: (ctx) => (prog.datasets.length > 1 ? ctx.dataset.label + ': ' : '') + ctx.raw.tip } } }
     }
   });
 }
-
 // ---------- Constancia ----------
 let goalChartInstance = null, goalGranularity = 'semana';
 function buildDayCardHTML(s) {
@@ -1813,11 +1963,7 @@ function buildDayCardHTML(s) {
   const gimTag = s.gimnasio ? '<span class="rtag fallo">📍 ' + s.gimnasio + '</span>' : '';
   let html = '<div class="day-head"><span class="grupo">Día ' + s.dia + ' · ' + s.grupo + rep + gimTag + '</span><span class="fecha">' + s.fecha + '</span></div>';
   html += '<table class="rtable"><thead><tr><th>Ej.</th><th>Peso</th><th>Reps</th></tr></thead><tbody>';
-  s.ejercicios.forEach(e => {
-    const retornoPct = parseRetornoTag(e.notas);
-    const tags = (e.ss ? '<span class="rtag ss">SS</span>' : '') + (e.fallo ? '<span class="rtag fallo">Fallo</span>' : '') + (retornoPct ? '<span class="rtag retorno">' + retornoPct + '%</span>' : '') + (e.maquina === 'accesoria' ? '<span class="rtag ss">🔧 Accesoria</span>' : '');
-    html += '<tr><td>' + e.nombre + tags + '</td><td>' + (e.peso || '—') + '</td><td>' + (e.reps || '—') + '</td></tr>';
-  });
+  s.ejercicios.forEach(e => { html += filaEjercicioHTML(e, 'rtag'); });
   html += '</tbody></table>';
   return html;
 }
